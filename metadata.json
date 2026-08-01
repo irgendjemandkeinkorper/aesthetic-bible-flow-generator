@@ -1,0 +1,6 @@
+{
+  "name": "Aesthetic Bible Flow Generator",
+  "description": "An AI-powered design system and style guideline generator for game design, fantasy, and sci-fi with automated mood board curation and philosophical cohesion auditing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
