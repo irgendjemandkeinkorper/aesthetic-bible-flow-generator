@@ -18,6 +18,26 @@ import {
 } from 'lucide-react';
 import { DecodedImageAesthetic, MoodBoardTile, MoodTileCategory } from '../types';
 
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_UPLOAD_DIMENSION = 8_192;
+const MAX_UPLOAD_PIXELS = 25_000_000;
+
+const detectBrowserImageMime = async (file: File): Promise<string | null> => {
+  const bytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (
+    bytes.length >= 8
+    && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (
+    bytes.length >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
+    && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP'
+  ) return 'image/webp';
+  return null;
+};
+
 interface ImageDecoderModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,24 +63,41 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('Please select a valid image file (PNG, JPEG, WebP).');
-      return;
-    }
-
-    setMimeType(file.type);
+  const selectImage = async (file: File) => {
     setErrorMsg(null);
     setDecodedResult(null);
+    setSelectedImage(null);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      if (file.size > MAX_UPLOAD_BYTES) throw new Error('Image must be 8 MB or smaller.');
+      const detectedMime = await detectBrowserImageMime(file);
+      if (!detectedMime) throw new Error('Image bytes must be a PNG, JPEG, or WebP file.');
+      if (file.type && file.type !== detectedMime) throw new Error('Image file type does not match its contents.');
+
+      const bitmap = await createImageBitmap(file);
+      const { width, height } = bitmap;
+      bitmap.close();
+      if (
+        width < 1 || height < 1
+        || width > MAX_UPLOAD_DIMENSION || height > MAX_UPLOAD_DIMENSION
+        || width * height > MAX_UPLOAD_PIXELS
+      ) {
+        throw new Error('Image exceeds the 8192px edge or 25,000,000 pixel limit.');
+      }
+
+      setMimeType(detectedMime);
+      const reader = new FileReader();
+      reader.onload = () => setSelectedImage(reader.result as string);
+      reader.onerror = () => setErrorMsg('The image could not be read.');
+      reader.readAsDataURL(file);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Please select a valid image file.');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void selectImage(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -70,20 +107,8 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (!file || !file.type.startsWith('image/')) {
-      setErrorMsg('Please drop a valid image file.');
-      return;
-    }
-
-    setMimeType(file.type);
-    setErrorMsg(null);
-    setDecodedResult(null);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (file) void selectImage(file);
+    else setErrorMsg('Please drop a PNG, JPEG, or WebP image.');
   };
 
   const handleDecode = async () => {
@@ -207,7 +232,7 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                 />
 

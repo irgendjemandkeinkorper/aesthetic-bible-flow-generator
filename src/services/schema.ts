@@ -99,11 +99,11 @@ export const MoodBoardTileSchema = z.object({
 });
 
 export const FineTuningStateSchema = z.object({
-  density: z.number().min(1).max(10),
-  contrast: z.number().min(1).max(10),
+  density: z.number().min(1, { message: 'Density must be at least 1' }).max(10),
+  contrast: z.number().min(1, { message: 'Contrast must be at least 1' }).max(10),
   eraBlend: z.string(),
-  saturation: z.number().min(1).max(10),
-  philosophicalDepth: z.number().min(1).max(10)
+  saturation: z.number().min(1, { message: 'Saturation must be at least 1' }).max(10),
+  philosophicalDepth: z.number().min(1, { message: 'Philosophical depth must be at least 1' }).max(10)
 });
 
 export const AestheticBibleSchema = z.object({
