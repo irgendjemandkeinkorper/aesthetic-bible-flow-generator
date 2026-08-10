@@ -1,16 +1,267 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const DEFAULT_RATE_LIMIT = 100;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEFAULT_MAX_RATE_LIMIT_CLIENTS = 10_000;
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_IMAGE_DIMENSION = 8_192;
+export const MAX_IMAGE_PIXELS = 25_000_000;
 
-const app = express();
+export interface ServerConfig {
+  allowedOrigins: ReadonlySet<string>;
+  apiRateLimit: number;
+  apiRateLimitWindowMs: number;
+  maxRateLimitClients: number;
+}
+
+function parsePositiveInteger(value: string | undefined, name: string, fallback: number): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  if (!/^\d+$/.test(value) || Number(value) < 1 || !Number.isSafeInteger(Number(value))) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return Number(value);
+}
+
+export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const configuredOrigins = env.CORS_ALLOWED_ORIGINS
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const defaultOrigins = env.APP_URL
+    ? [env.APP_URL]
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+  return {
+    allowedOrigins: new Set(configuredOrigins?.length ? configuredOrigins : defaultOrigins),
+    apiRateLimit: parsePositiveInteger(env.API_RATE_LIMIT, 'API_RATE_LIMIT', DEFAULT_RATE_LIMIT),
+    apiRateLimitWindowMs: parsePositiveInteger(
+      env.API_RATE_LIMIT_WINDOW_MS,
+      'API_RATE_LIMIT_WINDOW_MS',
+      DEFAULT_RATE_LIMIT_WINDOW_MS,
+    ),
+    maxRateLimitClients: parsePositiveInteger(
+      env.API_RATE_LIMIT_MAX_CLIENTS,
+      'API_RATE_LIMIT_MAX_CLIENTS',
+      DEFAULT_MAX_RATE_LIMIT_CLIENTS,
+    ),
+  };
+}
+
+interface RateLimitEntry {
+  count: number;
+  expiresAt: number;
+}
+
+export class BoundedRateLimiter {
+  private readonly clients = new Map<string, RateLimitEntry>();
+
+  constructor(
+    private readonly requestLimit: number,
+    private readonly windowMs: number,
+    private readonly maxClients: number,
+  ) {}
+
+  get size(): number {
+    return this.clients.size;
+  }
+
+  consume(clientId: string, now = Date.now()): { allowed: boolean; remaining: number; resetAt: number } {
+    const existing = this.clients.get(clientId);
+    if (existing && existing.expiresAt > now) {
+      existing.count += 1;
+      // Refresh insertion order so eviction approximates least-recently-used clients.
+      this.clients.delete(clientId);
+      this.clients.set(clientId, existing);
+      return {
+        allowed: existing.count <= this.requestLimit,
+        remaining: Math.max(0, this.requestLimit - existing.count),
+        resetAt: existing.expiresAt,
+      };
+    }
+
+    if (existing) this.clients.delete(clientId);
+    this.evictExpired(now);
+    while (this.clients.size >= this.maxClients) {
+      const oldestClient = this.clients.keys().next().value as string | undefined;
+      if (oldestClient === undefined) break;
+      this.clients.delete(oldestClient);
+    }
+
+    const entry = { count: 1, expiresAt: now + this.windowMs };
+    this.clients.set(clientId, entry);
+    return {
+      allowed: true,
+      remaining: Math.max(0, this.requestLimit - 1),
+      resetAt: entry.expiresAt,
+    };
+  }
+
+  private evictExpired(now: number): void {
+    for (const [clientId, entry] of this.clients) {
+      if (entry.expiresAt <= now) this.clients.delete(clientId);
+    }
+  }
+}
+
+export interface ValidatedImage {
+  data: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  width: number;
+  height: number;
+}
+
+function detectImage(buffer: Buffer): Omit<ValidatedImage, 'data'> | null {
+  if (
+    buffer.length >= 24
+    && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    && buffer.toString('ascii', 12, 16) === 'IHDR'
+  ) {
+    return { mimeType: 'image/png', width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 3 < buffer.length) {
+      if (buffer[offset] !== 0xff) return null;
+      while (buffer[offset] === 0xff) offset += 1;
+      const marker = buffer[offset++];
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (offset + 2 > buffer.length) return null;
+      const segmentLength = buffer.readUInt16BE(offset);
+      if (segmentLength < 2 || offset + segmentLength > buffer.length) return null;
+      const isStartOfFrame = (marker >= 0xc0 && marker <= 0xc3)
+        || (marker >= 0xc5 && marker <= 0xc7)
+        || (marker >= 0xc9 && marker <= 0xcb)
+        || (marker >= 0xcd && marker <= 0xcf);
+      if (isStartOfFrame) {
+        if (segmentLength < 7) return null;
+        return {
+          mimeType: 'image/jpeg',
+          width: buffer.readUInt16BE(offset + 5),
+          height: buffer.readUInt16BE(offset + 3),
+        };
+      }
+      offset += segmentLength;
+    }
+    return null;
+  }
+
+  if (
+    buffer.length >= 30
+    && buffer.toString('ascii', 0, 4) === 'RIFF'
+    && buffer.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    const chunk = buffer.toString('ascii', 12, 16);
+    if (chunk === 'VP8X') {
+      return {
+        mimeType: 'image/webp',
+        width: 1 + buffer.readUIntLE(24, 3),
+        height: 1 + buffer.readUIntLE(27, 3),
+      };
+    }
+    if (chunk === 'VP8L' && buffer[20] === 0x2f) {
+      return {
+        mimeType: 'image/webp',
+        width: 1 + buffer[21] + ((buffer[22] & 0x3f) << 8),
+        height: 1 + (buffer[22] >> 6) + (buffer[23] << 2) + ((buffer[24] & 0x0f) << 10),
+      };
+    }
+    if (chunk === 'VP8 ' && buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a) {
+      return {
+        mimeType: 'image/webp',
+        width: buffer.readUInt16LE(26) & 0x3fff,
+        height: buffer.readUInt16LE(28) & 0x3fff,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function validateImagePayload(imageBase64: unknown, suppliedMimeType?: unknown): ValidatedImage {
+  if (typeof imageBase64 !== 'string' || imageBase64.length === 0) {
+    throw new Error('imageBase64 parameter is required.');
+  }
+
+  let encoded = imageBase64;
+  let dataUriMime: string | undefined;
+  const dataUriMatch = /^data:([^;,]+);base64,(.*)$/s.exec(imageBase64);
+  if (dataUriMatch) {
+    [, dataUriMime, encoded] = dataUriMatch;
+  } else if (imageBase64.startsWith('data:')) {
+    throw new Error('Image data URL must contain base64-encoded data.');
+  }
+
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) {
+    throw new Error('Image data is not valid base64.');
+  }
+  const decodedSize = (encoded.length / 4) * 3 - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0);
+  if (decodedSize > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds the ${MAX_IMAGE_BYTES / 1024 / 1024} MB decoded-size limit.`);
+  }
+
+  const buffer = Buffer.from(encoded, 'base64');
+  const detected = detectImage(buffer);
+  if (!detected) throw new Error('Image bytes are not a supported PNG, JPEG, or WebP file.');
+
+  const labels = [dataUriMime, typeof suppliedMimeType === 'string' ? suppliedMimeType : undefined].filter(Boolean);
+  if (labels.some((label) => label !== detected.mimeType)) {
+    throw new Error(`Image MIME type does not match its content (${detected.mimeType}).`);
+  }
+  if (detected.width < 1 || detected.height < 1) throw new Error('Image dimensions are invalid.');
+  if (
+    detected.width > MAX_IMAGE_DIMENSION
+    || detected.height > MAX_IMAGE_DIMENSION
+    || detected.width * detected.height > MAX_IMAGE_PIXELS
+  ) {
+    throw new Error(
+      `Image dimensions exceed the ${MAX_IMAGE_DIMENSION}px edge or ${MAX_IMAGE_PIXELS.toLocaleString()} pixel limit.`,
+    );
+  }
+
+  return { data: encoded, ...detected };
+}
+
+const serverConfig = loadServerConfig();
+export const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.disable('x-powered-by');
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.get('Origin');
+  if (!origin) return next();
+  if (!serverConfig.allowedOrigins.has(origin)) {
+    return res.status(403).json({ error: 'Origin is not allowed.' });
+  }
+
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.vary('Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  res.setHeader('Access-Control-Max-Age', '600');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+const rateLimiter = new BoundedRateLimiter(
+  serverConfig.apiRateLimit,
+  serverConfig.apiRateLimitWindowMs,
+  serverConfig.maxRateLimitClients,
+);
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const result = rateLimiter.consume(req.ip || req.socket.remoteAddress || 'unknown');
+  res.setHeader('RateLimit-Limit', serverConfig.apiRateLimit);
+  res.setHeader('RateLimit-Remaining', result.remaining);
+  res.setHeader('RateLimit-Reset', Math.ceil(result.resetAt / 1000));
+  if (!result.allowed) return res.status(429).json({ error: 'API rate limit exceeded.' });
+  next();
+});
+
+// 12 MB accommodates the base64 expansion of an 8 MB decoded image plus JSON framing.
+app.use(express.json({ limit: '12mb' }));
 
 // Helper to get initialized GoogleGenAI instance safely
 function getGenAIClient(): GoogleGenAI | null {
@@ -418,27 +669,18 @@ app.post('/api/generate-mood-image', async (req, res) => {
 // -------------------------------------------------------------
 app.post('/api/decode-image-aesthetic', async (req, res) => {
   try {
+    const { imageBase64, mimeType } = req.body;
+    let image: ValidatedImage;
+    try {
+      image = validateImagePayload(imageBase64, mimeType);
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid image.' });
+    }
     const ai = getGenAIClient();
     if (!ai) {
       return res.status(500).json({
         error: 'GEMINI_API_KEY is not configured in server environment secrets.',
       });
-    }
-
-    const { imageBase64, mimeType } = req.body;
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: 'imageBase64 parameter is required.' });
-    }
-
-    // Clean base64 data string
-    let cleanData = imageBase64;
-    let detectedMime = mimeType || 'image/jpeg';
-
-    if (imageBase64.includes(';base64,')) {
-      const parts = imageBase64.split(';base64,');
-      detectedMime = parts[0].replace('data:', '');
-      cleanData = parts[1];
     }
 
     const prompt = `Deconstruct and decode the complete visual DNA & aesthetic guidelines of this image for game art direction and speculative worldbuilding.
@@ -462,8 +704,8 @@ Produce a JSON response matching the schema:
       contents: [
         {
           inlineData: {
-            mimeType: detectedMime,
-            data: cleanData,
+            mimeType: image.mimeType,
+            data: image.data,
           },
         },
         {
@@ -544,26 +786,18 @@ Produce a JSON response matching the schema:
 // -------------------------------------------------------------
 app.post('/api/audit-image-cohesion', async (req, res) => {
   try {
+    const { bible, imageBase64, mimeType, candidateType } = req.body;
+    let image: ValidatedImage;
+    try {
+      image = validateImagePayload(imageBase64, mimeType);
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid image.' });
+    }
     const ai = getGenAIClient();
     if (!ai) {
       return res.status(500).json({
         error: 'GEMINI_API_KEY is not configured in server environment secrets.',
       });
-    }
-
-    const { bible, imageBase64, mimeType, candidateType } = req.body;
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: 'imageBase64 parameter is required.' });
-    }
-
-    let cleanData = imageBase64;
-    let detectedMime = mimeType || 'image/jpeg';
-
-    if (imageBase64.includes(';base64,')) {
-      const parts = imageBase64.split(';base64,');
-      detectedMime = parts[0].replace('data:', '');
-      cleanData = parts[1];
     }
 
     const prompt = `You are an expert Game Art Director performing a visual style cohesion audit on an uploaded artwork image against an established Aesthetic Bible.
@@ -592,8 +826,8 @@ Inspect the provided image's colors, lighting, geometry, material textures, and 
       contents: [
         {
           inlineData: {
-            mimeType: detectedMime,
-            data: cleanData,
+            mimeType: image.mimeType,
+            data: image.data,
           },
         },
         {
@@ -657,4 +891,6 @@ async function start() {
   });
 }
 
-start();
+if (process.env.NODE_ENV !== 'test') {
+  void start();
+}

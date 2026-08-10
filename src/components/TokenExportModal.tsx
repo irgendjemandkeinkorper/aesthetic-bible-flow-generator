@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, Code2, Copy, Check, Download, FileText, Sparkles } from 'lucide-react';
 import { AestheticBible } from '../types';
+import { stringifyFigmaInterchange } from '../services/figmaExport';
 
 interface TokenExportModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const TokenExportModal: React.FC<TokenExportModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'css' | 'markdown' | 'json' | 'engine'>('css');
   const [isCopied, setIsCopied] = useState(false);
+  const figmaInterchangeJson = useMemo(() => stringifyFigmaInterchange(bible), [bible]);
 
   if (!isOpen) return null;
 
@@ -117,7 +119,7 @@ ${bible.manifesto.dontList.map(item => `- [ ] ${item}`).join('\n')}
 
   // 3. JSON Tokens
   const generateJSON = () => {
-    return JSON.stringify(bible, null, 2);
+    return figmaInterchangeJson;
   };
 
   // 4. Unreal Engine / Unity C# Header
@@ -163,8 +165,8 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
 
   const downloadFile = () => {
     const text = getContent();
-    const ext = activeTab === 'css' ? 'css' : activeTab === 'markdown' ? 'md' : activeTab === 'json' ? 'json' : 'cs';
-    const blob = new Blob([text], { type: 'text/plain' });
+    const ext = activeTab === 'css' ? 'css' : activeTab === 'markdown' ? 'md' : activeTab === 'json' ? 'figma.json' : 'cs';
+    const blob = new Blob([text], { type: activeTab === 'json' ? 'application/json' : 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -188,7 +190,7 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
                 Export Design Tokens & Art Bible
               </h2>
               <p className="text-xs text-slate-400">
-                Ready-to-use CSS, Tailwind, Markdown, and Game Engine code exports
+                Ready-to-use code exports and versioned Figma interchange JSON
               </p>
             </div>
           </div>
@@ -230,7 +232,7 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            JSON W3C Tokens
+            Figma Interchange JSON
           </button>
           <button
             onClick={() => setActiveTab('engine')}
