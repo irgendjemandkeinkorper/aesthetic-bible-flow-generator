@@ -16,7 +16,14 @@ export const TokenExportModal: React.FC<TokenExportModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'css' | 'markdown' | 'json' | 'engine'>('css');
   const [isCopied, setIsCopied] = useState(false);
-  const figmaInterchangeJson = useMemo(() => stringifyFigmaInterchange(bible), [bible]);
+  const figmaInterchangeJson = useMemo(() => {
+    if (!isOpen || activeTab !== 'json') return '';
+    try {
+      return stringifyFigmaInterchange(bible);
+    } catch (error) {
+      return `// Unable to generate Figma interchange JSON: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }, [bible, isOpen, activeTab]);
 
   if (!isOpen) return null;
 

@@ -241,23 +241,22 @@ async function addPrototypeConnections(document: FigmaInterchangeDocument): Prom
   }
 }
 
-async function importDocument(input: unknown): Promise<void> {
+async function importDocument(input: unknown, createdPages: PageNode[]): Promise<void> {
   const document = FigmaInterchangeSchema.parse(input);
   nodeBySourceId.clear(); componentBySourceId.clear(); paintStyleByName.clear(); effectStyleByName.clear(); deferredInstances.length = 0;
   await createLocalStyles(document);
-  const importedPages: PageNode[] = [];
   for (const pageSpec of document.pages) {
     const page = figma.createPage();
     page.name = pageSpec.name;
     page.setPluginData('tangleSourceId', pageSpec.id);
-    importedPages.push(page);
+    createdPages.push(page);
     await page.loadAsync();
     for (const child of pageSpec.children) await createNode(child, page);
   }
   await createDeferredInstances();
   await addPrototypeConnections(document);
-  if (importedPages[0]) await figma.setCurrentPageAsync(importedPages[0]);
-  const importedNodes = [...nodeBySourceId.values()].filter((node) => node.parent === importedPages[0]);
+  if (createdPages[0]) await figma.setCurrentPageAsync(createdPages[0]);
+  const importedNodes = [...nodeBySourceId.values()].filter((node) => node.parent === createdPages[0]);
   if (importedNodes.length) {
     figma.currentPage.selection = importedNodes;
     figma.viewport.scrollAndZoomIntoView(importedNodes);
@@ -266,15 +265,19 @@ async function importDocument(input: unknown): Promise<void> {
 
 figma.ui.onmessage = async (message: { type?: string; json?: string }) => {
   if (message.type !== 'import') return;
+  const createdPages: PageNode[] = [];
   try {
     const input = JSON.parse(message.json ?? '');
-    await importDocument(input);
+    await importDocument(input, createdPages);
     figma.ui.postMessage({ type: 'result', ok: true, message: 'Import complete.' });
     figma.notify('Tangle design imported successfully');
   } catch (error) {
     const messageText = error instanceof Error ? error.message : 'Unknown import error';
     console.error('Tangle import failed', error);
-    figma.ui.postMessage({ type: 'result', ok: false, message: messageText });
+    for (const page of createdPages) {
+      try { page.remove(); } catch (cleanupError) { console.error('Failed to clean up partial import page', cleanupError); }
+    }
+    figma.ui.postMessage({ type: 'result', ok: false, message: `${messageText} (partial import was rolled back)` });
     figma.notify(`Import failed: ${messageText}`, { error: true });
   }
 };

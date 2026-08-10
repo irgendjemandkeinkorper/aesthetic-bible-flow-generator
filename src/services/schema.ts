@@ -108,7 +108,7 @@ export const FineTuningStateSchema = z.object({
 
 export const AestheticBibleSchema = z.object({
   id: z.string(),
-  title: z.string(),
+  title: z.string().min(1, { message: 'Title must not be empty' }),
   tagline: z.string(),
   genre: GenreCategorySchema,
   subgenre: z.string(),

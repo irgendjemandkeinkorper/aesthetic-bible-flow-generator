@@ -21,6 +21,8 @@ The repository includes a GitHub Actions workflow that deploys the client build 
 
 To use the full AI feature set in production, deploy the Node server to a host that supports environment secrets and set `GEMINI_API_KEY` there.
 
+If the server runs behind a reverse proxy or load balancer, configure Express's `trust proxy` setting and forward `X-Forwarded-For`; otherwise every client shares one rate-limit bucket keyed off the proxy's socket address.
+
 ## Scripts
 
 - `npm run dev` — run the Vite + Express development server.
