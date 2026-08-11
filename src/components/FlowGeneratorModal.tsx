@@ -13,6 +13,7 @@ import {
   Eye
 } from 'lucide-react';
 import { GenreCategory, FineTuningState, GenerationPromptInput, AestheticBible, DecodedImageAesthetic } from '../types';
+import { providerRegistry, runBibleGeneration } from '../services/providers';
 
 interface FlowGeneratorModalProps {
   isOpen: boolean;
@@ -141,18 +142,25 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
       setTimeout(() => setGenerationStep('Formulating Typography Pairings & Shape Language Rules...'), 2600);
       setTimeout(() => setGenerationStep('Curating Automated Mood Board Tiles & Visual Prompts...'), 4200);
 
-      const res = await fetch('/api/generate-bible', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const adapter = providerRegistry.getActive();
+      let generatedBible: AestheticBible;
+      if (adapter) {
+        const model = adapter.models[0];
+        if (!model) throw new Error('The active AI provider has no available models.');
+        generatedBible = (await runBibleGeneration(adapter, payload, model.id)).bible!;
+      } else {
+        const res = await fetch('/api/generate-bible', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.error || 'Failed to generate Aesthetic Bible.');
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData?.error || 'Failed to generate Aesthetic Bible.');
+        }
+        generatedBible = await res.json();
       }
-
-      const generatedBible: AestheticBible = await res.json();
       onBibleGenerated(generatedBible);
       onClose();
     } catch (err: any) {

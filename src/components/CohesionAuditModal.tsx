@@ -12,6 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 import { AestheticBible, CohesionAuditResult } from '../types';
+import { providerRegistry } from '../services/providers';
 
 interface CohesionAuditModalProps {
   isOpen: boolean;
@@ -64,6 +65,20 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
     setAuditResult(null);
 
     try {
+      const adapter = providerRegistry.getActive();
+      if (adapter && auditMode === 'text') {
+        const model = adapter.models[0];
+        if (!model) throw new Error('The active AI provider has no available models.');
+        const result = await adapter.auditCohesion(
+          activeBible,
+          candidateConcept.trim(),
+          candidateType,
+          model.id,
+        );
+        setAuditResult(result);
+        return;
+      }
+
       const endpoint = auditMode === 'image' ? '/api/audit-image-cohesion' : '/api/audit-cohesion';
       const payload = auditMode === 'image'
         ? {
