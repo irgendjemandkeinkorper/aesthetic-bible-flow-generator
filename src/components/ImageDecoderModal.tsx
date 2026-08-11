@@ -44,6 +44,7 @@ interface ImageDecoderModalProps {
   onClose: () => void;
   onAddTileToActiveBible: (tile: MoodBoardTile) => void;
   onGenerateBibleFromDecoded: (decoded: DecodedImageAesthetic, imageUrl: string) => void;
+  preferLocalServer?: boolean;
 }
 
 export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
@@ -51,6 +52,7 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
   onClose,
   onAddTileToActiveBible,
   onGenerateBibleFromDecoded,
+  preferLocalServer = false,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
@@ -120,7 +122,7 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
     setDecodedResult(null);
 
     try {
-      const adapter = providerRegistry.getActive();
+      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
       let data: DecodedImageAesthetic;
       if (adapter) {
         const model = adapter.models.find((candidate) => candidate.capabilities.vision);

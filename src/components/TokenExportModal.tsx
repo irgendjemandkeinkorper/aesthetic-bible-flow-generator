@@ -1,21 +1,25 @@
 import React, { useMemo, useState } from 'react';
-import { X, Code2, Copy, Check, Download, FileText, Sparkles } from 'lucide-react';
+import { X, Code2, Copy, Check, Download, Upload } from 'lucide-react';
 import { AestheticBible } from '../types';
 import { stringifyFigmaInterchange } from '../services/figmaExport';
+import { parseAestheticBibleJson } from '../services/bibleImport';
 
 interface TokenExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   bible: AestheticBible;
+  onImportBible: (bible: AestheticBible) => void;
 }
 
 export const TokenExportModal: React.FC<TokenExportModalProps> = ({
   isOpen,
   onClose,
   bible,
+  onImportBible,
 }) => {
-  const [activeTab, setActiveTab] = useState<'css' | 'markdown' | 'json' | 'engine'>('css');
+  const [activeTab, setActiveTab] = useState<'css' | 'markdown' | 'json' | 'bible' | 'engine'>('css');
   const [isCopied, setIsCopied] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const figmaInterchangeJson = useMemo(() => {
     if (!isOpen || activeTab !== 'json') return '';
     try {
@@ -129,6 +133,8 @@ ${bible.manifesto.dontList.map(item => `- [ ] ${item}`).join('\n')}
     return figmaInterchangeJson;
   };
 
+  const generateBibleJSON = () => JSON.stringify(bible, null, 2);
+
   // 4. Unreal Engine / Unity C# Header
   const generateEngineCode = () => {
     return `// ==========================================================================
@@ -160,6 +166,7 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
       case 'css': return generateCSS();
       case 'markdown': return generateMarkdown();
       case 'json': return generateJSON();
+      case 'bible': return generateBibleJSON();
       case 'engine': return generateEngineCode();
     }
   };
@@ -172,14 +179,37 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
 
   const downloadFile = () => {
     const text = getContent();
-    const ext = activeTab === 'css' ? 'css' : activeTab === 'markdown' ? 'md' : activeTab === 'json' ? 'figma.json' : 'cs';
-    const blob = new Blob([text], { type: activeTab === 'json' ? 'application/json' : 'text/plain' });
+    const ext = activeTab === 'css' ? 'css' : activeTab === 'markdown' ? 'md' : activeTab === 'json' ? 'figma.json' : activeTab === 'bible' ? 'bible.json' : 'cs';
+    const blob = new Blob([text], { type: activeTab === 'json' || activeTab === 'bible' ? 'application/json' : 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${bible.id}-tokens.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const importBibleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 5 * 1024 * 1024) {
+        setImportMessage('Import failed: the JSON file must be 5 MB or smaller.');
+        return;
+      }
+      const result = parseAestheticBibleJson(await file.text());
+      if (result.success === false) {
+        setImportMessage(`Import failed: ${result.error}`);
+        return;
+      }
+      onImportBible(result.bible);
+      setImportMessage(`Imported “${result.bible.title}” successfully.`);
+    } catch (error) {
+      setImportMessage(`Import failed: ${error instanceof Error ? error.message : 'Unable to read the selected file.'}`);
+    } finally {
+      input.value = '';
+    }
   };
 
   return (
@@ -251,6 +281,16 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
           >
             Unity / Unreal C# Header
           </button>
+          <button
+            onClick={() => setActiveTab('bible')}
+            className={`px-3 py-2 text-xs font-mono font-medium border-b-2 transition-all ${
+              activeTab === 'bible'
+                ? 'border-cyan-400 text-cyan-300'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Full Bible JSON
+          </button>
         </div>
 
         {/* Code Output Viewer */}
@@ -258,6 +298,11 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
           <pre className="w-full max-h-[50vh] overflow-auto bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-cyan-300 leading-relaxed select-all">
             {getContent()}
           </pre>
+          {importMessage && (
+            <div role="status" className={`mt-3 rounded-lg border p-3 text-xs ${importMessage.startsWith('Import failed') ? 'border-rose-800 bg-rose-950/40 text-rose-300' : 'border-emerald-800 bg-emerald-950/40 text-emerald-300'}`}>
+              {importMessage}
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}
@@ -267,6 +312,10 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
           </span>
 
           <div className="flex items-center gap-3">
+            <label className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer">
+              <Upload className="w-3.5 h-3.5" /> Import Bible
+              <input type="file" accept="application/json,.json" onChange={(event) => void importBibleFile(event)} className="sr-only" />
+            </label>
             <button
               onClick={downloadFile}
               className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"

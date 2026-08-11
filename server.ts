@@ -263,6 +263,10 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 // 12 MB accommodates the base64 expansion of an 8 MB decoded image plus JSON framing.
 app.use(express.json({ limit: '12mb' }));
 
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Helper to get initialized GoogleGenAI instance safely
 function getGenAIClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;

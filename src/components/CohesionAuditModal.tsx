@@ -18,12 +18,14 @@ interface CohesionAuditModalProps {
   isOpen: boolean;
   onClose: () => void;
   activeBible: AestheticBible;
+  preferLocalServer?: boolean;
 }
 
 export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
   isOpen,
   onClose,
   activeBible,
+  preferLocalServer = false,
 }) => {
   const [auditMode, setAuditMode] = useState<'text' | 'image'>('text');
   const [candidateType, setCandidateType] = useState<'Character' | 'Environment' | 'Item/Weapon' | 'UI Component' | 'Lore / Story Quest' | 'Audio / OST Note'>('Character');
@@ -65,7 +67,7 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
     setAuditResult(null);
 
     try {
-      const adapter = providerRegistry.getActive();
+      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
       if (adapter && auditMode === 'text') {
         const model = adapter.models[0];
         if (!model) throw new Error('The active AI provider has no available models.');

@@ -35,6 +35,16 @@ const pngHeader = (width: number, height: number): Buffer => {
   return buffer;
 };
 
+describe('health endpoint', () => {
+  it('reports that the local Express server is available', async () => {
+    const response = await fetch(`${baseUrl}/api/health`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toEqual({ status: 'ok' });
+  });
+});
+
 describe('CORS middleware', () => {
   it('sends CORS headers for allowed origins', async () => {
     const response = await fetch(`${baseUrl}/api/not-found`, {
