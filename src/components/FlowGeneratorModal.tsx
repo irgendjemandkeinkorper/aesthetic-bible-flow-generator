@@ -21,6 +21,7 @@ interface FlowGeneratorModalProps {
   onBibleGenerated: (bible: AestheticBible) => void;
   initialDecodedSeed?: DecodedImageAesthetic | null;
   seedImageUrl?: string | null;
+  preferLocalServer?: boolean;
 }
 
 const GENRE_OPTIONS: { category: GenreCategory; label: string; desc: string }[] = [
@@ -55,6 +56,7 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   onBibleGenerated,
   initialDecodedSeed,
   seedImageUrl,
+  preferLocalServer = false,
 }) => {
   const [genre, setGenre] = useState<GenreCategory>('Clockwork / Dieselpunk Alchemy');
   const [title, setTitle] = useState('');
@@ -142,7 +144,7 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
       setTimeout(() => setGenerationStep('Formulating Typography Pairings & Shape Language Rules...'), 2600);
       setTimeout(() => setGenerationStep('Curating Automated Mood Board Tiles & Visual Prompts...'), 4200);
 
-      const adapter = providerRegistry.getActive();
+      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
       let generatedBible: AestheticBible;
       if (adapter) {
         const model = adapter.models[0];
