@@ -15,6 +15,34 @@ npm run dev
 
 The local server runs at `http://localhost:3000`.
 
+### Local Ollama provider
+
+The browser can use a keyless Ollama server running on the same computer. Install Ollama, pull a supported model, and start the Ollama server with browser origins enabled:
+
+```bash
+# macOS
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# This environment variable configures the Ollama SERVER process.
+# Set it before starting Ollama; it is not an app environment variable.
+OLLAMA_ORIGINS='*' ollama serve
+
+# Run in another terminal.
+ollama pull llama3.2
+ollama pull llava
+```
+
+In **Provider Settings**, expand **Local Setup Guide**, save `http://localhost:11434` as the Ollama server URL, and select an Ollama model. Ollama does not require or accept an API key in this integration. The app checks `/api/tags` with a two-second timeout before enabling the provider, then sends non-streaming JSON requests directly from the browser to `/api/generate`.
+
+`OLLAMA_ORIGINS='*'` must be present in the environment of the **Ollama server when it starts**. Adding it to this app's `.env.local`, or setting it after Ollama is already running, does not configure Ollama and will not fix browser CORS failures. If connection fails, confirm Ollama is running, visit `http://localhost:11434/api/tags` from the same browser, restart Ollama with the variable above, and verify `ollama list` includes the selected model.
+
+The Ollama URL field intentionally accepts only loopback HTTP hosts (`localhost`, `127.0.0.1`, or `[::1]`). `OLLAMA_ORIGINS='*'` permits any website loaded in the browser to call Ollama, so use it only on a trusted local machine and stop the server when it is not needed.
+
+The Copilot CLI bridge investigation for the local tier did not produce a shippable endpoint; see [`docs/copilot-cli-bridge-spike.md`](docs/copilot-cli-bridge-spike.md).
+
 ## GitHub Pages
 
 The repository includes a GitHub Actions workflow that deploys the client build from `dist/` whenever `main` is updated. The static site includes the curated preset experience. By default, AI requests continue to use the Express API so its Gemini key remains private.

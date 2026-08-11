@@ -32,6 +32,8 @@ export type CohesionCandidateType =
 export interface ProviderAdapter {
   readonly id: string;
   readonly label: string;
+  /** Keyless local providers may opt out of the registry's credential guard. */
+  readonly requiresApiKey?: boolean;
   readonly capabilities: ProviderCapabilities;
   readonly models: readonly ProviderModel[];
 
@@ -55,4 +57,3 @@ export interface ProviderAdapter {
     signal?: AbortSignal,
   ): Promise<CohesionAuditResult>;
 }
-

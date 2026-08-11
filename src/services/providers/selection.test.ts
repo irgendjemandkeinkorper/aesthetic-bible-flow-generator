@@ -28,4 +28,15 @@ describe('provider model selection and capability gating', () => {
     expect(capabilityAllowed(selected?.model.capabilities, 'vision')).toBe(true);
     expect(capabilityAllowed(selected?.model.capabilities, 'imageGeneration')).toBe(false);
   });
+
+  it('offers a registered Ollama model when its local server URL is configured', () => {
+    const ollama = adapter('ollama', false, false);
+    const options = getProviderModelOptions(
+      { gemini: '', openai: '', anthropic: '', ollama: 'http://localhost:11434' },
+      [ollama],
+    );
+    expect(options.filter((option) => option.providerId === 'ollama')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ enabled: true })]),
+    );
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { 
   Compass, 
   Sparkles, 
@@ -32,7 +32,8 @@ import { TokenExportModal } from './components/TokenExportModal';
 import { ImageDecoderModal } from './components/ImageDecoderModal';
 import { ClaudeDesignPlaygroundSection } from './components/ClaudeDesignPlaygroundSection';
 import { SettingsModal } from './components/SettingsModal';
-import { configureAnthropicProvider, configureGeminiProvider, configureOpenAIProvider, providerRegistry } from './services/providers';
+import { configureAnthropicProvider, configureGeminiProvider, configureOllamaProvider, configureOpenAIProvider, providerRegistry } from './services/providers';
+import { GenerationGuard } from './services/providers/generationGuard';
 import { detectLocalServer } from './services/localServer';
 import { readProviderKeys, type ProviderKeys } from './services/providerSettings';
 
@@ -60,6 +61,14 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<'manifesto' | 'colors' | 'typography' | 'shape' | 'interface' | 'moodboard' | 'playground'>('manifesto');
 
+  // Per-provider generation counter. Any call that configures a provider (the mount
+  // effect below, or an interactive Settings change) captures the current generation
+  // before its async work starts; if the counter has moved on by the time it resolves,
+  // a newer call has superseded it and its result must be discarded rather than committed.
+  // This also covers two overlapping interactive Settings edits for the same provider,
+  // not just mount-effect-vs-Settings — whichever call started last "wins" deterministically.
+  const providerGenerations = useRef(new GenerationGuard());
+
   useEffect(() => {
     const controller = new AbortController();
     const initialKeys = readProviderKeys(window.localStorage);
@@ -67,10 +76,19 @@ export default function App() {
       ['gemini', initialKeys.gemini, configureGeminiProvider],
       ['openai', initialKeys.openai, configureOpenAIProvider],
       ['anthropic', initialKeys.anthropic, configureAnthropicProvider],
+      ['ollama', initialKeys.ollama, configureOllamaProvider],
     ] as const;
     void Promise.all(configured.filter(([, key]) => key).map(async ([id, key, configure]) => {
+      const generation = providerGenerations.current.current(id);
       try {
         await configure(key, controller.signal);
+        if (!providerGenerations.current.isCurrent(id, generation)) {
+          // An interactive Settings change for this provider started (and possibly
+          // finished) while this mount-time configure was in flight; discard this
+          // now-stale registration rather than overwriting the newer decision.
+          providerRegistry.unregister(id);
+          return;
+        }
         setConfiguredProviders((current) => current.includes(id) ? current : [...current, id]);
       } catch (error) {
         if (!controller.signal.aborted) console.warn(`Unable to configure browser provider ${id}.`, error);
@@ -101,6 +119,10 @@ export default function App() {
   };
 
   const handleProviderKeyChange = async (providerId: 'gemini' | 'openai' | 'anthropic' | 'ollama', apiKey: string) => {
+    // Bump synchronously, before any await, so any other in-flight call for this same
+    // provider (the mount effect, or an earlier overlapping Settings edit) is immediately
+    // marked stale and will discard its result instead of racing this one.
+    const generation = providerGenerations.current.bump(providerId);
     providerRegistry.unregister(providerId);
     setConfiguredProviders((current) => current.filter((id) => id !== providerId));
     if (!apiKey) return;
@@ -110,9 +132,14 @@ export default function App() {
         ? configureOpenAIProvider
         : providerId === 'anthropic'
           ? configureAnthropicProvider
-          : undefined;
-    if (!configure) return;
+          : configureOllamaProvider;
     await configure(apiKey);
+    if (!providerGenerations.current.isCurrent(providerId, generation)) {
+      // A newer Settings edit for this provider started after this one; discard this
+      // now-stale registration rather than overwriting the newer decision.
+      providerRegistry.unregister(providerId);
+      return;
+    }
     setConfiguredProviders((current) => [...current.filter((id) => id !== providerId), providerId]);
   };
 
@@ -158,7 +185,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         activeProviders={[
           ...(localServerMode && localServerAvailable ? ['Local server'] : []),
-          ...(!localServerMode ? configuredProviders.map((id) => id === 'gemini' ? 'Gemini' : id === 'openai' ? 'OpenAI' : 'Anthropic') : []),
+          ...(!localServerMode ? configuredProviders.map((id) => id === 'gemini' ? 'Gemini' : id === 'openai' ? 'OpenAI' : id === 'anthropic' ? 'Anthropic' : 'Ollama') : []),
         ]}
         localServerAvailable={localServerAvailable}
         localServerMode={localServerMode}
@@ -167,7 +194,7 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-8">
-        {!localServerMode && !providerKeys.gemini && !providerKeys.openai && !providerKeys.anthropic && (
+        {!localServerMode && configuredProviders.length === 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
             <span>No local server or browser provider key is active. Add a key in Settings to enable AI generation on this static deployment.</span>
             <button onClick={() => setIsSettingsOpen(true)} className="rounded-lg bg-amber-700 px-3 py-1.5 font-semibold text-white hover:bg-amber-600">Open Settings</button>

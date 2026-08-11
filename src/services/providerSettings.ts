@@ -9,7 +9,7 @@ export const PROVIDER_SETTINGS = [
   { id: 'gemini', label: 'Gemini', storageKey: GEMINI_API_KEY_STORAGE_KEY, available: true },
   { id: 'openai', label: 'OpenAI', storageKey: OPENAI_API_KEY_STORAGE_KEY, available: true },
   { id: 'anthropic', label: 'Anthropic', storageKey: ANTHROPIC_API_KEY_STORAGE_KEY, available: true },
-  { id: 'ollama', label: 'Ollama', storageKey: OLLAMA_API_KEY_STORAGE_KEY, available: false },
+  { id: 'ollama', label: 'Ollama', storageKey: OLLAMA_API_KEY_STORAGE_KEY, available: true },
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_SETTINGS)[number]['id'];

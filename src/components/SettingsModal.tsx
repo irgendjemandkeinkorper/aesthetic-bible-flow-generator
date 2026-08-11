@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, KeyRound, Save, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Copy, KeyRound, Save, Trash2, X } from 'lucide-react';
 import {
   PROVIDER_SETTINGS,
   persistProviderKey,
@@ -24,6 +24,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [keys, setKeys] = useState<ProviderKeys>(() => readProviderKeys(window.localStorage));
   const [message, setMessage] = useState<string | null>(null);
   const [savingProvider, setSavingProvider] = useState<ProviderId | null>(null);
+  const [copiedSetup, setCopiedSetup] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,21 +41,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setKeys(nextKeys);
     onKeysChange(nextKeys);
 
-    if (providerId !== 'ollama') {
-      setSavingProvider(providerId);
-      try {
-        await onProviderKeyChange(providerId, value);
-        const label = PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label;
-        setMessage(value ? `${label} key saved and browser provider activated.` : `${label} key removed.`);
-      } catch (error) {
-        setMessage(`Key was saved, but activation failed: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        setSavingProvider(null);
-      }
-      return;
+    setSavingProvider(providerId);
+    try {
+      await onProviderKeyChange(providerId, value);
+      const label = PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label;
+      const setting = providerId === 'ollama' ? 'server URL' : 'key';
+      setMessage(value ? `${label} ${setting} saved and browser provider activated.` : `${label} ${setting} removed.`);
+    } catch (error) {
+      setMessage(`Setting was saved, but activation failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSavingProvider(null);
     }
-
-    setMessage(`${PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label} key saved for a future provider adapter.`);
   };
 
   const clearKey = async (providerId: ProviderId) => {
@@ -62,8 +59,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     persistProviderKey(window.localStorage, providerId, '');
     setKeys(nextKeys);
     onKeysChange(nextKeys);
-    if (providerId !== 'ollama') await onProviderKeyChange(providerId, '');
-    setMessage(`${PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label} key deleted from this browser.`);
+    await onProviderKeyChange(providerId, '');
+    const setting = providerId === 'ollama' ? 'server URL' : 'key';
+    setMessage(`${PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label} ${setting} deleted from this browser.`);
+  };
+
+  const setupSnippet = `# macOS\nbrew install ollama\n\n# Linux\ncurl -fsSL https://ollama.com/install.sh | sh\n\n# Set this on the Ollama server before it starts\nOLLAMA_ORIGINS='*' ollama serve\n\n# In another terminal\nollama pull llama3.2\nollama pull llava`;
+
+  const copySetup = async () => {
+    try {
+      await navigator.clipboard.writeText(setupSnippet);
+      setCopiedSetup(true);
+      setTimeout(() => setCopiedSetup(false), 2_000);
+    } catch {
+      setMessage('Clipboard access was denied. Select the setup commands and copy them manually.');
+    }
   };
 
   return (
@@ -91,7 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div key={provider.id} className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <label htmlFor={`provider-key-${provider.id}`} className="text-xs font-semibold text-slate-200">
-                  {provider.label} {provider.available ? 'API key' : 'key (adapter coming soon)'}
+                  {provider.label} {provider.id === 'ollama' ? 'server URL' : 'API key'}
                 </label>
                 {keys[provider.id] && (
                   <span className="flex items-center gap-1 text-[10px] font-mono uppercase text-emerald-400">
@@ -102,11 +112,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="flex gap-2">
                 <input
                   id={`provider-key-${provider.id}`}
-                  type="password"
+                  type={provider.id === 'ollama' ? 'url' : 'password'}
                   autoComplete="off"
                   value={keys[provider.id]}
                   onChange={(event) => setKeys({ ...keys, [provider.id]: event.target.value })}
-                  placeholder={provider.id === 'ollama' ? 'Optional local Ollama credential' : `Enter ${provider.label} API key`}
+                  placeholder={provider.id === 'ollama' ? 'http://localhost:11434' : `Enter ${provider.label} API key`}
                   className="min-w-0 flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
                 />
                 <button
@@ -125,9 +135,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-              {!provider.available && <p className="text-[11px] text-slate-500">Stored for M3/M4; this key does not activate a provider yet.</p>}
+              {provider.id === 'ollama' && <p className="text-[11px] text-slate-500">No API key is required. Only localhost URLs are accepted.</p>}
             </div>
           ))}
+
+          <details className="rounded-xl border border-amber-800/70 bg-amber-950/30 p-3 text-xs text-amber-100">
+            <summary className="cursor-pointer font-semibold">Local Setup Guide</summary>
+            <div className="mt-3 space-y-3">
+              <p>
+                Run Ollama on the same computer as this browser. <code>OLLAMA_ORIGINS</code> is an
+                environment variable for the Ollama server process—not an app setting—and must be set before Ollama starts.
+              </p>
+              <div className="relative">
+                <pre className="overflow-x-auto rounded-lg border border-slate-700 bg-slate-950 p-3 pr-12 text-[11px] text-slate-200"><code>{setupSnippet}</code></pre>
+                <button
+                  type="button"
+                  onClick={() => void copySetup()}
+                  aria-label="Copy Ollama setup commands"
+                  className="absolute right-2 top-2 rounded border border-slate-600 bg-slate-900 p-1.5 text-slate-300 hover:text-white"
+                >
+                  {copiedSetup ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <div>
+                <p className="font-semibold">Troubleshooting</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-amber-200/90">
+                  <li>Confirm <code>ollama serve</code> is still running and the URL is <code>http://localhost:11434</code>.</li>
+                  <li>If the browser reports CORS, stop Ollama and restart its server with <code>OLLAMA_ORIGINS='*'</code>.</li>
+                  <li>Open <code>http://localhost:11434/api/tags</code> in the same browser to check reachability.</li>
+                  <li>Run <code>ollama list</code> and pull any model shown as missing.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
 
           {message && <div role="status" className="rounded-lg bg-slate-900 border border-slate-700 p-3 text-xs text-slate-300">{message}</div>}
         </div>
