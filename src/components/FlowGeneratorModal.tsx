@@ -10,12 +10,23 @@ import {
   Wand2, 
   Compass,
   Plus,
-  Eye
+  Eye,
+  Volume2
 } from 'lucide-react';
-import { GenreCategory, FineTuningState, GenerationPromptInput, AestheticBible, DecodedImageAesthetic } from '../types';
+import {
+  GenreCategory,
+  FineTuningState,
+  GenerationPromptInput,
+  AestheticBible,
+  DecodedImageAesthetic,
+  GamePerspective,
+  MechanicsArchetype,
+  RenderingStyle,
+} from '../types';
 import { providerRegistry, runBibleGeneration } from '../services/providers';
 import { getProviderModelOptions, resolveProviderModel } from '../services/providers';
 import type { ProviderKeys } from '../services/providerSettings';
+import { AestheticBibleSchema } from '../services/schema';
 
 interface FlowGeneratorModalProps {
   isOpen: boolean;
@@ -53,6 +64,18 @@ const PRESET_PHILOSOPHIES = [
   'Arcane Industrialization'
 ];
 
+const GAME_PERSPECTIVES: GamePerspective[] = ['First Person', 'Third Person', 'Isometric', 'Side Scroller', 'Text-Based'];
+const MECHANICS_ARCHETYPES: MechanicsArchetype[] = ['Platformer', 'RPG', 'RTS', 'Deckbuilder', 'Narrative Sim'];
+const RENDERING_STYLES: RenderingStyle[] = [
+  '2D Pixel Art',
+  'Hand-Painted 2D',
+  'Stylized 3D',
+  'Low-Poly 3D',
+  'High-Fidelity Photoreal',
+  'Cel-Shaded',
+  'Mixed Media',
+];
+
 export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   isOpen,
   onClose,
@@ -71,6 +94,16 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   ]);
   const [customPhilosophy, setCustomPhilosophy] = useState('');
   const [visualMood, setVisualMood] = useState('High-contrast brass framing, glowing blue ether conduits, dark gothic stone workshops, and heavy mechanical gear assemblies.');
+  const [gamePerspective, setGamePerspective] = useState<GamePerspective | ''>('');
+  const [mechanicsArchetype, setMechanicsArchetype] = useState<MechanicsArchetype | ''>('');
+  const [renderingStyle, setRenderingStyle] = useState<RenderingStyle | ''>('');
+  const [artisticInfluences, setArtisticInfluences] = useState<string[]>([]);
+  const [artisticInfluenceInput, setArtisticInfluenceInput] = useState('');
+  const [musicTempo, setMusicTempo] = useState('');
+  const [musicTexture, setMusicTexture] = useState('');
+  const [musicInstrumentation, setMusicInstrumentation] = useState<string[]>([]);
+  const [instrumentInput, setInstrumentInput] = useState('');
+  const [ambientMood, setAmbientMood] = useState('');
   
   const [fineTuning, setFineTuning] = useState<FineTuningState>({
     density: 7,
@@ -142,6 +175,19 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
     }
   };
 
+  const addTag = (
+    value: string,
+    values: string[],
+    setValues: React.Dispatch<React.SetStateAction<string[]>>,
+    clearInput: React.Dispatch<React.SetStateAction<string>>,
+  ) => {
+    const tag = value.trim();
+    if (tag && !values.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase())) {
+      setValues([...values, tag]);
+    }
+    clearInput('');
+  };
+
   const handleGenerate = async () => {
     if (selectedPhilosophies.length === 0) {
       setErrorMsg('Please select or input at least one Philosophy Anchor.');
@@ -153,12 +199,31 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
     setGenerationStep('Synthesizing Core Art Direction & Manifesto...');
 
     try {
+      const pendingInfluence = artisticInfluenceInput.trim();
+      const finalInfluences = pendingInfluence && !artisticInfluences.some((item) => item.toLocaleLowerCase() === pendingInfluence.toLocaleLowerCase())
+        ? [...artisticInfluences, pendingInfluence]
+        : artisticInfluences;
+      const pendingInstrument = instrumentInput.trim();
+      const finalInstrumentation = pendingInstrument && !musicInstrumentation.some((item) => item.toLocaleLowerCase() === pendingInstrument.toLocaleLowerCase())
+        ? [...musicInstrumentation, pendingInstrument]
+        : musicInstrumentation;
+      if (pendingInfluence) addTag(artisticInfluenceInput, artisticInfluences, setArtisticInfluences, setArtisticInfluenceInput);
+      if (pendingInstrument) addTag(instrumentInput, musicInstrumentation, setMusicInstrumentation, setInstrumentInput);
+
       const payload: GenerationPromptInput = {
         title: title.trim() || undefined,
         genre,
         subgenre: subgenre.trim() || undefined,
         philosophyAnchors: selectedPhilosophies,
         visualMood: visualMood.trim() || 'Cohesive speculative design system',
+        gamePerspective: gamePerspective || undefined,
+        mechanicsArchetype: mechanicsArchetype || undefined,
+        renderingStyle: renderingStyle || undefined,
+        artisticInfluences: finalInfluences.length ? finalInfluences : undefined,
+        musicTempo: musicTempo.trim() || undefined,
+        musicTexture: musicTexture.trim() || undefined,
+        musicInstrumentation: finalInstrumentation.length ? finalInstrumentation : undefined,
+        ambientMood: ambientMood.trim() || undefined,
         fineTuning
       };
 
@@ -216,8 +281,12 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
           const errData = await res.json();
           throw new Error(errData?.error || 'Failed to generate Aesthetic Bible.');
         }
-        const generatedBible: AestheticBible = await res.json();
-        onBibleGenerated(generatedBible);
+        const rawBible = await res.json();
+        const validation = AestheticBibleSchema.safeParse(rawBible);
+        if (!validation.success) {
+          throw new Error('The local server returned a malformed Aesthetic Bible.');
+        }
+        onBibleGenerated(validation.data);
       }
       onClose();
     } catch (err: any) {
@@ -336,10 +405,50 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Philosophical Anchors */}
+          {/* Section 2: Game & Rendering Direction */}
+          <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <label className="text-xs font-mono font-semibold uppercase tracking-wider text-cyan-400">
+              2. Game & Rendering Direction
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="text-xs text-slate-400">
+                Perspective
+                <select value={gamePerspective} onChange={(event) => setGamePerspective(event.target.value as GamePerspective | '')} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                  <option value="">Infer from brief</option>
+                  {GAME_PERSPECTIVES.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <label className="text-xs text-slate-400">
+                Mechanics Archetype
+                <select value={mechanicsArchetype} onChange={(event) => setMechanicsArchetype(event.target.value as MechanicsArchetype | '')} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                  <option value="">Infer from brief</option>
+                  {MECHANICS_ARCHETYPES.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <label className="text-xs text-slate-400">
+                Rendering Style
+                <select value={renderingStyle} onChange={(event) => setRenderingStyle(event.target.value as RenderingStyle | '')} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                  <option value="">Infer from brief</option>
+                  {RENDERING_STYLES.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Artistic Influences</label>
+              <div className="flex gap-2">
+                <input value={artisticInfluenceInput} onChange={(event) => setArtisticInfluenceInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); addTag(artisticInfluenceInput, artisticInfluences, setArtisticInfluences, setArtisticInfluenceInput); } }} placeholder="Type an influence and press Enter" className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500 text-xs" />
+                <button type="button" onClick={() => addTag(artisticInfluenceInput, artisticInfluences, setArtisticInfluences, setArtisticInfluenceInput)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs">Add</button>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {artisticInfluences.map((influence) => <button key={influence} type="button" onClick={() => setArtisticInfluences((current) => current.filter((item) => item !== influence))} className="px-2 py-1 rounded-md border border-cyan-800 bg-cyan-950/30 text-cyan-300 text-[11px]" title="Remove influence">{influence} ×</button>)}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Philosophical Anchors */}
           <div className="space-y-3 pt-2 border-t border-slate-800/80">
             <label className="text-xs font-mono font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <Brain className="w-4 h-4" /> 2. Philosophical Anchors (The Core Meaning)
+              <Brain className="w-4 h-4" /> 3. Philosophical Anchors (The Core Meaning)
             </label>
             <p className="text-xs text-slate-400">
               Select philosophical tenets that inform the aesthetic reasoning and shape language:
@@ -385,10 +494,10 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Visual Mood Prompt */}
+          {/* Section 4: Visual Mood Prompt */}
           <div className="space-y-2 pt-2 border-t border-slate-800/80">
             <label className="text-xs font-mono font-semibold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-              <Palette className="w-4 h-4" /> 3. Visual Mood & Tactile Direction
+              <Palette className="w-4 h-4" /> 4. Visual Mood & Tactile Direction
             </label>
             <textarea
               rows={3}
@@ -399,10 +508,32 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
             />
           </div>
 
-          {/* Section 4: Fine-Tuning Sliders */}
+          {/* Section 5: Music Direction */}
+          <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <label className="text-xs font-mono font-semibold uppercase tracking-wider text-violet-400 flex items-center gap-1.5">
+              <Volume2 className="w-4 h-4" /> 5. Music & Ambient Direction
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input value={musicTempo} onChange={(event) => setMusicTempo(event.target.value)} placeholder="Tempo, e.g. 90 BPM" className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-violet-500 text-xs" />
+              <input value={musicTexture} onChange={(event) => setMusicTexture(event.target.value)} placeholder="Texture, e.g. granular and warm" className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-violet-500 text-xs" />
+              <input value={ambientMood} onChange={(event) => setAmbientMood(event.target.value)} placeholder="Ambient mood" className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-violet-500 text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Instrumentation</label>
+              <div className="flex gap-2">
+                <input value={instrumentInput} onChange={(event) => setInstrumentInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); addTag(instrumentInput, musicInstrumentation, setMusicInstrumentation, setInstrumentInput); } }} placeholder="Type an instrument and press Enter" className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-violet-500 text-xs" />
+                <button type="button" onClick={() => addTag(instrumentInput, musicInstrumentation, setMusicInstrumentation, setInstrumentInput)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs">Add</button>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {musicInstrumentation.map((instrument) => <button key={instrument} type="button" onClick={() => setMusicInstrumentation((current) => current.filter((item) => item !== instrument))} className="px-2 py-1 rounded-md border border-violet-800 bg-violet-950/30 text-violet-300 text-[11px]" title="Remove instrument">{instrument} ×</button>)}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 6: Fine-Tuning Sliders */}
           <div className="space-y-3 pt-2 border-t border-slate-800/80">
             <label className="text-xs font-mono font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Sliders className="w-4 h-4" /> 4. Style Guideline Fine-Tuning
+              <Sliders className="w-4 h-4" /> 6. Style Guideline Fine-Tuning
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/40 border border-slate-800/80 rounded-xl p-4">

@@ -13,6 +13,32 @@ export const GenreCategorySchema = z.enum([
   'Custom / Hybrid Speculative'
 ]);
 
+export const GamePerspectiveSchema = z.enum([
+  'First Person',
+  'Third Person',
+  'Isometric',
+  'Side Scroller',
+  'Text-Based'
+]);
+
+export const MechanicsArchetypeSchema = z.enum([
+  'Platformer',
+  'RPG',
+  'RTS',
+  'Deckbuilder',
+  'Narrative Sim'
+]);
+
+export const RenderingStyleSchema = z.enum([
+  '2D Pixel Art',
+  'Hand-Painted 2D',
+  'Stylized 3D',
+  'Low-Poly 3D',
+  'High-Fidelity Photoreal',
+  'Cel-Shaded',
+  'Mixed Media'
+]);
+
 export const MoodTileCategorySchema = z.enum([
   'Environment',
   'Character',
@@ -106,6 +132,12 @@ export const FineTuningStateSchema = z.object({
   philosophicalDepth: z.number().min(1, { message: 'Philosophical depth must be at least 1' }).max(10)
 });
 
+export const MusicDirectionSchema = z.object({
+  coreThemeSpec: z.string(),
+  instrumentation: z.array(z.string()),
+  generativePromptSpec: z.string()
+});
+
 export const AestheticBibleSchema = z.object({
   id: z.string(),
   title: z.string().min(1, { message: 'Title must not be empty' }),
@@ -115,6 +147,11 @@ export const AestheticBibleSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   philosophyAnchors: z.array(z.string()),
+  gamePerspective: GamePerspectiveSchema.optional(),
+  mechanicsArchetype: MechanicsArchetypeSchema.optional(),
+  renderingStyle: RenderingStyleSchema.optional(),
+  artisticInfluences: z.array(z.string()).optional(),
+  musicDirection: MusicDirectionSchema.optional(),
   manifesto: ManifestoSchema,
   colorSystem: ColorSystemSchema,
   typographySystem: TypographySystemSchema,

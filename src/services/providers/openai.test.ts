@@ -42,11 +42,16 @@ describe('OpenAIProviderAdapter', () => {
   });
 
   it('marks every schema property required for strict mode and tolerates explicit nulls for optional fields', async () => {
-    const bibleWithNullPinned = {
+    const bibleWithExplicitNulls = {
       ...INITIAL_PRESETS[0],
+      gamePerspective: null,
+      mechanicsArchetype: null,
+      renderingStyle: null,
+      artisticInfluences: null,
+      musicDirection: null,
       moodBoard: INITIAL_PRESETS[0].moodBoard.map((tile) => ({ ...tile, pinned: null })),
     };
-    const request = vi.fn().mockResolvedValue(jsonResponse(bibleWithNullPinned));
+    const request = vi.fn().mockResolvedValue(jsonResponse(bibleWithExplicitNulls));
     const adapter = new OpenAIProviderAdapter(`sk-${'d'.repeat(24)}`, request);
 
     const result = await adapter.generateBible({
@@ -55,12 +60,57 @@ describe('OpenAIProviderAdapter', () => {
       visualMood: 'cinematic',
     }, 'gpt-4.1-mini');
     expect(result.id).toBe(INITIAL_PRESETS[0].id);
+    expect(result.gamePerspective).toBeUndefined();
+    expect(result.musicDirection).toBeUndefined();
     expect(result.moodBoard.every((tile) => tile.pinned === undefined)).toBe(true);
 
     const body = JSON.parse(String((request.mock.calls[0][1] as RequestInit).body));
+    const bibleSchema = body.response_format.json_schema.schema;
+    expect(bibleSchema.required).toEqual(expect.arrayContaining([
+      'gamePerspective',
+      'mechanicsArchetype',
+      'renderingStyle',
+      'artisticInfluences',
+      'musicDirection',
+    ]));
+    expect(bibleSchema.properties.gamePerspective.type).toEqual(expect.arrayContaining(['string', 'null']));
+    expect(bibleSchema.properties.musicDirection.type).toEqual(expect.arrayContaining(['object', 'null']));
+    expect(bibleSchema.properties.musicDirection.required).toEqual([
+      'coreThemeSpec',
+      'instrumentation',
+      'generativePromptSpec',
+    ]);
     const moodBoardItemSchema = body.response_format.json_schema.schema.properties.moodBoard.items;
     expect(moodBoardItemSchema.required).toEqual(expect.arrayContaining(Object.keys(moodBoardItemSchema.properties)));
     expect(moodBoardItemSchema.properties.pinned.type).toEqual(expect.arrayContaining(['null']));
+  });
+
+  it('weaves advanced brief fields into the generation prompt', async () => {
+    const request = vi.fn().mockResolvedValue(jsonResponse(INITIAL_PRESETS[0]));
+    const adapter = new OpenAIProviderAdapter(`sk-${'e'.repeat(24)}`, request);
+
+    await adapter.generateBible({
+      genre: INITIAL_PRESETS[0].genre,
+      philosophyAnchors: ['clarity'],
+      visualMood: 'cinematic',
+      gamePerspective: 'Isometric',
+      mechanicsArchetype: 'RTS',
+      renderingStyle: 'Low-Poly 3D',
+      artisticInfluences: ['Bauhaus'],
+      musicTempo: '110 BPM',
+      musicTexture: 'granular',
+      musicInstrumentation: ['modular synth'],
+      ambientMood: 'watchful',
+    }, 'gpt-4.1-mini');
+
+    const body = JSON.parse(String((request.mock.calls[0][1] as RequestInit).body));
+    const prompt = body.messages[1].content as string;
+    expect(prompt).toContain('perspective: Isometric');
+    expect(prompt).toContain('mechanics archetype: RTS');
+    expect(prompt).toContain('rendering style: Low-Poly 3D');
+    expect(prompt).toContain('artistic influences: Bauhaus');
+    expect(prompt).toContain('instrumentation: modular synth');
+    expect(prompt).toContain('production-ready generativePromptSpec');
   });
 
   it('sends image data as a vision content part', async () => {

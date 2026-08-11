@@ -380,7 +380,10 @@ export default function App() {
           )}
 
           {activeTab === 'interface' && (
-            <InterfaceHudSection interfaceAndHUD={activeBible.interfaceAndHUD} />
+            <InterfaceHudSection
+              interfaceAndHUD={activeBible.interfaceAndHUD}
+              musicDirection={activeBible.musicDirection}
+            />
           )}
 
           {activeTab === 'moodboard' && (

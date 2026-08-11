@@ -13,6 +13,7 @@ import type {
 } from '../../types';
 import type { CohesionCandidateType, ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 import { validateWithRepair } from './validationPipeline';
+import { buildAestheticBiblePrompt } from './prompt';
 
 interface GeminiResponseLike {
   text?: string;
@@ -76,9 +77,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     model: string,
     signal?: AbortSignal,
   ): Promise<AestheticBible> {
-    const prompt = `You are a lead art director and speculative worldbuilder. Generate a complete aesthetic bible as JSON.
-Input: ${JSON.stringify(brief)}
-Use valid six-digit hex colors, distinct typography roles, concrete do/don't lists, and 4-6 detailed mood-board tiles. Generate stable unique string IDs and ISO date strings.`;
+    const prompt = buildAestheticBiblePrompt(brief);
     return this.generateStructured(prompt, model, AestheticBibleSchema, signal);
   }
 

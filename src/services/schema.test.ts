@@ -21,6 +21,28 @@ describe('Aesthetic Bible Schema', () => {
     const result = AestheticBibleSchema.safeParse(invalidPreset);
     expect(result.success).toBe(false);
   });
+
+  it('accepts legacy bibles without M5 creative-direction fields', () => {
+    const {
+      gamePerspective: _gamePerspective,
+      mechanicsArchetype: _mechanicsArchetype,
+      renderingStyle: _renderingStyle,
+      artisticInfluences: _artisticInfluences,
+      musicDirection: _musicDirection,
+      ...legacyBible
+    } = INITIAL_PRESETS[0];
+
+    expect(AestheticBibleSchema.safeParse(legacyBible).success).toBe(true);
+  });
+
+  it('accepts bibles with the complete M5 creative direction', () => {
+    const result = AestheticBibleSchema.safeParse(INITIAL_PRESETS[0]);
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.gamePerspective).toBe('Third Person');
+    expect(result.data.musicDirection?.instrumentation.length).toBeGreaterThan(0);
+  });
 });
 
 describe('FineTuningStateSchema', () => {

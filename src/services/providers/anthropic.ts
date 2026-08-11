@@ -13,6 +13,7 @@ import type {
 } from '../../types';
 import type { CohesionCandidateType, ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 import { validateWithRepair } from './validationPipeline';
+import { buildAestheticBiblePrompt } from './prompt';
 
 const CAPABILITIES: ProviderCapabilities = {
   structuredOutput: false,
@@ -64,7 +65,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
 
   generateBible(brief: GenerationPromptInput, model: string, signal?: AbortSignal): Promise<AestheticBible> {
     return this.generateStructured(
-      `Generate a complete aesthetic bible for this creative brief: ${JSON.stringify(brief)}. Use stable unique string IDs, ISO date strings, valid six-digit hex colors, and 4-6 mood-board tiles.`,
+      buildAestheticBiblePrompt(brief),
       model,
       AestheticBibleSchema,
       signal,

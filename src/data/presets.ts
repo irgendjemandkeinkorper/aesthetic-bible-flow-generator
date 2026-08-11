@@ -15,6 +15,15 @@ export const INITIAL_PRESETS: AestheticBible[] = [
       'The Burdens of Forbidden Alchemy',
       'Celestial Mechanics as Divine Law'
     ],
+    gamePerspective: 'Third Person',
+    mechanicsArchetype: 'RPG',
+    renderingStyle: 'Stylized 3D',
+    artisticInfluences: ['Byzantine sacred art', 'Victorian scientific instruments', 'Gothic cathedrals'],
+    musicDirection: {
+      coreThemeSpec: 'A solemn clockwork processional that accelerates into ecstatic celestial machinery.',
+      instrumentation: ['pipe organ', 'hammered dulcimer', 'low strings', 'brass choir', 'mechanical percussion'],
+      generativePromptSpec: 'Cinematic gothic-industrial score, 92 BPM, solemn pipe organ and low strings, hammered dulcimer ostinato, tarnished brass swells, intricate clockwork percussion, luminous celestial climax, dark reverberant cathedral, no vocals.'
+    },
     fineTuning: {
       density: 8,
       contrast: 9,
@@ -147,6 +156,15 @@ export const INITIAL_PRESETS: AestheticBible[] = [
       'Functionalist Utility without Ornament',
       'Analogue Telemetry in Deep Silence'
     ],
+    gamePerspective: 'First Person',
+    mechanicsArchetype: 'Narrative Sim',
+    renderingStyle: 'High-Fidelity Photoreal',
+    artisticInfluences: ['Cold War mission control', 'Brutalist megastructures', '1970s hard science fiction'],
+    musicDirection: {
+      coreThemeSpec: 'Sparse orbital dread measured by machine pulses and long intervals of near-silence.',
+      instrumentation: ['analog synthesizer', 'prepared piano', 'contrabass', 'shortwave radio', 'industrial impacts'],
+      generativePromptSpec: 'Minimalist cassette-futurist ambient score, 58 BPM, analog synth drones, prepared piano fragments, contrabass pressure tones, distant shortwave telemetry, occasional concrete industrial impacts, immense cold orbital space, restrained and wordless.'
+    },
     fineTuning: {
       density: 5,
       contrast: 10,
@@ -254,6 +272,15 @@ export const INITIAL_PRESETS: AestheticBible[] = [
       'Harmony between Silicon and Moss',
       'Impermanence in the Fiber-Optic Rain'
     ],
+    gamePerspective: 'Isometric',
+    mechanicsArchetype: 'Deckbuilder',
+    renderingStyle: 'Cel-Shaded',
+    artisticInfluences: ['Shinto shrine architecture', 'ukiyo-e composition', 'neon-noir cinema'],
+    musicDirection: {
+      coreThemeSpec: 'Meditative ritual motifs bloom into precise electronic pulses as spirits enter the network.',
+      instrumentation: ['shakuhachi', 'koto', 'temple bells', 'granular synthesizer', 'rain field recordings'],
+      generativePromptSpec: 'Cyber-Zen ambient electronica, 76 BPM, breathy shakuhachi and sparse koto, temple bells dissolving into granular synth pulses, soft rain field recordings, serene ritual atmosphere with subtle neon tension, spacious mix, no vocals.'
+    },
     fineTuning: {
       density: 7,
       contrast: 8,
