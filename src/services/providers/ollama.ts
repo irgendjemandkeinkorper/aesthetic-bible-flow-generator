@@ -1,11 +1,13 @@
 import { z, type ZodType } from 'zod';
 import {
   AestheticBibleSchema,
+  ComparisonAuditSchema,
   CohesionAuditResultSchema,
   DecodedImageAestheticSchema,
 } from '../schema';
 import type {
   AestheticBible,
+  ComparisonAudit,
   CohesionAuditResult,
   DecodedImageAesthetic,
   GenerationPromptInput,
@@ -14,6 +16,7 @@ import { fetchWithTimeout } from '../localServer';
 import type { CohesionCandidateType, ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 import { validateWithRepair } from './validationPipeline';
 import { buildAestheticBiblePrompt } from './prompt';
+import { buildComparisonAuditPrompt } from '../comparisonAuditor';
 
 const TEXT_CAPABILITIES: ProviderCapabilities = {
   structuredOutput: true,
@@ -141,6 +144,10 @@ export class OllamaProviderAdapter implements ProviderAdapter {
       CohesionAuditResultSchema,
       signal,
     );
+  }
+
+  auditComparison(bibles: readonly AestheticBible[], model: string, signal?: AbortSignal): Promise<ComparisonAudit> {
+    return this.generateStructured(buildComparisonAuditPrompt(bibles), model, ComparisonAuditSchema, signal);
   }
 
   private requireModel(model: string): ProviderModel {

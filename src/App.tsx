@@ -17,7 +17,7 @@ import {
   Layers
 } from 'lucide-react';
 
-import { AestheticBible, MoodBoardTile, DecodedImageAesthetic } from './types';
+import { AestheticBible, MoodBoardTile, DecodedImageAesthetic, Run } from './types';
 import { INITIAL_PRESETS } from './data/presets';
 import { Header } from './components/Header';
 import { BibleManifestoSection } from './components/BibleManifestoSection';
@@ -32,10 +32,12 @@ import { TokenExportModal } from './components/TokenExportModal';
 import { ImageDecoderModal } from './components/ImageDecoderModal';
 import { ClaudeDesignPlaygroundSection } from './components/ClaudeDesignPlaygroundSection';
 import { SettingsModal } from './components/SettingsModal';
-import { configureAnthropicProvider, configureGeminiProvider, configureOllamaProvider, configureOpenAIProvider, providerRegistry } from './services/providers';
+import { ComparisonWorkspace } from './components/ComparisonWorkspace';
+import { configureAnthropicProvider, configureGeminiProvider, configureOllamaProvider, configureOpenAIProvider, providerRegistry, setRunObserver } from './services/providers';
 import { GenerationGuard } from './services/providers/generationGuard';
 import { detectLocalServer } from './services/localServer';
 import { readProviderKeys, type ProviderKeys } from './services/providerSettings';
+import { addRunToHistory, clearRunHistory, exportRunOutputs, readRunHistory, setRunPinned } from './services/historyStore';
 
 export default function App() {
   const [bibles, setBibles] = useState<AestheticBible[]>(INITIAL_PRESETS);
@@ -46,6 +48,8 @@ export default function App() {
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+  const [runHistory, setRunHistory] = useState<Run[]>(() => readRunHistory(window.localStorage));
   const [providerKeys, setProviderKeys] = useState<ProviderKeys>(() => readProviderKeys(window.localStorage));
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [localServerAvailable, setLocalServerAvailable] = useState(false);
@@ -95,6 +99,17 @@ export default function App() {
       }
     }));
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    setRunObserver((run) => {
+      try {
+        setRunHistory(addRunToHistory(window.localStorage, run));
+      } catch (error) {
+        console.warn('Unable to persist completed run history.', error);
+      }
+    });
+    return () => setRunObserver();
   }, []);
 
   useEffect(() => {
@@ -170,6 +185,22 @@ export default function App() {
     }));
   };
 
+  const handlePinRun = (runId: string, pinned: boolean) => {
+    try {
+      setRunHistory(setRunPinned(window.localStorage, runId, pinned));
+    } catch (error) {
+      console.warn('Unable to update pinned run history.', error);
+    }
+  };
+
+  const handleClearRunHistory = () => {
+    try {
+      setRunHistory(clearRunHistory(window.localStorage));
+    } catch (error) {
+      console.warn('Unable to clear run history.', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#07080C] text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950 flex flex-col">
       
@@ -193,6 +224,16 @@ export default function App() {
       />
 
       {/* Main Container */}
+      {isComparisonOpen ? (
+        <ComparisonWorkspace
+          runs={runHistory}
+          activeAdapter={activeProvider}
+          onClose={() => setIsComparisonOpen(false)}
+          onPin={handlePinRun}
+          onClear={handleClearRunHistory}
+          onExport={exportRunOutputs}
+        />
+      ) : (
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-8">
         {!localServerMode && configuredProviders.length === 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
@@ -235,6 +276,13 @@ export default function App() {
 
             {/* Quick Action Badge & Controls */}
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 shrink-0">
+              <button
+                onClick={() => setIsComparisonOpen(true)}
+                className="px-4 py-2 bg-slate-900/90 hover:bg-slate-800 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-md"
+              >
+                <Layers className="w-4 h-4 text-cyan-400" />
+                <span>History & Compare ({runHistory.length})</span>
+              </button>
               <button
                 onClick={() => setIsAuditOpen(true)}
                 className="px-4 py-2 bg-slate-900/90 hover:bg-slate-800 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-md"
@@ -406,6 +454,7 @@ export default function App() {
         </div>
 
       </main>
+      )}
 
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-800/80 bg-[#0A0B10] py-6 px-4 text-center text-xs text-slate-500 font-mono">

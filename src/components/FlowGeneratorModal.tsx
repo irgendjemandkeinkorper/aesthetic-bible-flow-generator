@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -27,6 +27,20 @@ import { providerRegistry, runBibleGeneration } from '../services/providers';
 import { getProviderModelOptions, resolveProviderModel } from '../services/providers';
 import type { ProviderKeys } from '../services/providerSettings';
 import { AestheticBibleSchema } from '../services/schema';
+import { GenerationCancellationRegistry } from '../services/generationCancellation';
+
+type GenerationRequestStatus = 'pending' | 'success' | 'failed' | 'aborted';
+interface GenerationRequestState {
+  key: string;
+  label: string;
+  status: GenerationRequestStatus;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError';
+}
 
 interface FlowGeneratorModalProps {
   isOpen: boolean;
@@ -117,6 +131,8 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   const [generationStep, setGenerationStep] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [generationRequests, setGenerationRequests] = useState<GenerationRequestState[]>([]);
+  const cancellationRegistry = useRef(new GenerationCancellationRegistry());
   const modelOptions = getProviderModelOptions(providerKeys, providerRegistry.list());
   const enabledModelKeys = modelOptions.filter((option) => option.enabled).map((option) => option.key).join('\0');
 
@@ -157,6 +173,8 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
     }
   }, [initialDecodedSeed]);
 
+  useEffect(() => () => cancellationRegistry.current.cancelAll(), []);
+
   if (!isOpen) return null;
 
 
@@ -195,6 +213,7 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
     }
 
     setIsGenerating(true);
+    setGenerationRequests([]);
     setErrorMsg(null);
     setGenerationStep('Synthesizing Core Art Direction & Manifesto...');
 
@@ -238,14 +257,33 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
         throw new Error('A selected provider is no longer available. Choose an active model and try again.');
       }
       if (selections.length) {
+        setGenerationRequests(selections.map(({ adapter, model }) => ({
+          key: `${adapter.id}:${model.id}`,
+          label: `${adapter.label} · ${model.label}`,
+          status: 'pending',
+        })));
         const settled = await Promise.allSettled(
-          selections.map(({ adapter, model }) => runBibleGeneration(adapter, payload, model.id)),
+          selections.map(async ({ adapter, model }) => {
+            const key = `${adapter.id}:${model.id}`;
+            const controller = cancellationRegistry.current.start(key);
+            try {
+              const run = await runBibleGeneration(adapter, payload, model.id, controller.signal);
+              setGenerationRequests((current) => current.map((request) => request.key === key ? { ...request, status: 'success' } : request));
+              return run;
+            } catch (error) {
+              const status: GenerationRequestStatus = controller.signal.aborted ? 'aborted' : 'failed';
+              setGenerationRequests((current) => current.map((request) => request.key === key ? { ...request, status } : request));
+              throw error;
+            } finally {
+              cancellationRegistry.current.finish(key, controller);
+            }
+          }),
         );
         const successes = settled.flatMap((result, index) => result.status === 'fulfilled' && result.value.bible
           ? [{ run: result.value, selection: selections[index] }]
           : []);
         const failures = settled.flatMap((result, index) => result.status === 'rejected'
-          ? [`${selections[index].adapter.label} · ${selections[index].model.label}: ${result.reason instanceof Error ? result.reason.message : 'Generation failed'}`]
+          ? [`${selections[index].adapter.label} · ${selections[index].model.label}: ${isAbortError(result.reason) ? 'Cancelled' : result.reason instanceof Error ? result.reason.message : 'Generation failed'}`]
           : []);
 
         const seenIds = new Set<string>();
@@ -347,6 +385,21 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
                 </label>
               ))}
             </div>
+            {generationRequests.length > 0 && (
+              <div className="mt-3 space-y-2" aria-live="polite">
+                {generationRequests.map((request) => (
+                  <div key={request.key} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs">
+                    <span className="flex items-center gap-2 text-slate-300">
+                      {request.status === 'pending' && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />}
+                      {request.label}
+                    </span>
+                    {request.status === 'pending'
+                      ? <button type="button" onClick={() => cancellationRegistry.current.cancel(request.key)} className="rounded border border-rose-800 px-2 py-1 text-rose-300 hover:bg-rose-950/50">Cancel</button>
+                      : <span className={request.status === 'success' ? 'text-emerald-300' : request.status === 'aborted' ? 'text-amber-300' : 'text-rose-300'}>{request.status}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
             {!modelOptions.some((option) => option.enabled) && <p className="text-[11px] text-amber-300">No browser provider is configured; generation will use the Express fallback.</p>}
           </fieldset>
 

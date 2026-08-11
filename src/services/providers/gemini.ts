@@ -2,11 +2,13 @@ import { GoogleGenAI } from '@google/genai';
 import { z, type ZodType } from 'zod';
 import {
   AestheticBibleSchema,
+  ComparisonAuditSchema,
   CohesionAuditResultSchema,
   DecodedImageAestheticSchema,
 } from '../schema';
 import type {
   AestheticBible,
+  ComparisonAudit,
   CohesionAuditResult,
   DecodedImageAesthetic,
   GenerationPromptInput,
@@ -14,6 +16,7 @@ import type {
 import type { CohesionCandidateType, ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 import { validateWithRepair } from './validationPipeline';
 import { buildAestheticBiblePrompt } from './prompt';
+import { buildComparisonAuditPrompt } from '../comparisonAuditor';
 
 interface GeminiResponseLike {
   text?: string;
@@ -110,6 +113,10 @@ Candidate type: ${candidateType}
 Candidate: ${candidate}
 Aesthetic bible: ${JSON.stringify(bible)}`;
     return this.generateStructured(prompt, model, CohesionAuditResultSchema, signal);
+  }
+
+  auditComparison(bibles: readonly AestheticBible[], model: string, signal?: AbortSignal): Promise<ComparisonAudit> {
+    return this.generateStructured(buildComparisonAuditPrompt(bibles), model, ComparisonAuditSchema, signal);
   }
 
   private async generateStructured<T>(

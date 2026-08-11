@@ -1,11 +1,13 @@
 import { z, type ZodType } from 'zod';
 import {
   AestheticBibleSchema,
+  ComparisonAuditSchema,
   CohesionAuditResultSchema,
   DecodedImageAestheticSchema,
 } from '../schema';
 import type {
   AestheticBible,
+  ComparisonAudit,
   CohesionAuditResult,
   DecodedImageAesthetic,
   GenerationPromptInput,
@@ -13,6 +15,7 @@ import type {
 import type { CohesionCandidateType, ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 import { validateWithRepair } from './validationPipeline';
 import { buildAestheticBiblePrompt } from './prompt';
+import { buildComparisonAuditPrompt } from '../comparisonAuditor';
 
 const CAPABILITIES: ProviderCapabilities = {
   structuredOutput: true,
@@ -137,6 +140,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       model,
       'cohesion_audit',
       CohesionAuditResultSchema,
+      signal,
+    );
+  }
+
+  auditComparison(bibles: readonly AestheticBible[], model: string, signal?: AbortSignal): Promise<ComparisonAudit> {
+    return this.generateStructured(
+      buildComparisonAuditPrompt(bibles),
+      model,
+      'comparison_audit',
+      ComparisonAuditSchema,
       signal,
     );
   }
