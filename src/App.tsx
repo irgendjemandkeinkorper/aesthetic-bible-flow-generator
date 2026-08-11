@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { 
   Compass, 
   Sparkles, 
@@ -32,7 +32,7 @@ import { TokenExportModal } from './components/TokenExportModal';
 import { ImageDecoderModal } from './components/ImageDecoderModal';
 import { ClaudeDesignPlaygroundSection } from './components/ClaudeDesignPlaygroundSection';
 import { SettingsModal } from './components/SettingsModal';
-import { configureGeminiProvider, GEMINI_API_KEY_STORAGE_KEY, providerRegistry } from './services/providers';
+import { configureAnthropicProvider, configureGeminiProvider, configureOpenAIProvider, providerRegistry } from './services/providers';
 import { detectLocalServer } from './services/localServer';
 import { readProviderKeys, type ProviderKeys } from './services/providerSettings';
 
@@ -46,8 +46,12 @@ export default function App() {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [providerKeys, setProviderKeys] = useState<ProviderKeys>(() => readProviderKeys(window.localStorage));
-  const [isGeminiActive, setIsGeminiActive] = useState(false);
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [localServerAvailable, setLocalServerAvailable] = useState(false);
+  const activeProvider = useSyncExternalStore(
+    (listener) => providerRegistry.subscribe(listener),
+    () => providerRegistry.getActive(),
+  );
   const [localServerMode, setLocalServerMode] = useState(false);
 
   // Pre-seed state for generator from image decoder
@@ -57,14 +61,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'manifesto' | 'colors' | 'typography' | 'shape' | 'interface' | 'moodboard' | 'playground'>('manifesto');
 
   useEffect(() => {
-    const apiKey = window.localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
-    if (!apiKey) return;
     const controller = new AbortController();
-    void configureGeminiProvider(apiKey, controller.signal)
-      .then(() => setIsGeminiActive(true))
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) console.warn('Unable to configure the browser Gemini provider.', error);
-      });
+    const initialKeys = readProviderKeys(window.localStorage);
+    const configured = [
+      ['gemini', initialKeys.gemini, configureGeminiProvider],
+      ['openai', initialKeys.openai, configureOpenAIProvider],
+      ['anthropic', initialKeys.anthropic, configureAnthropicProvider],
+    ] as const;
+    void Promise.all(configured.filter(([, key]) => key).map(async ([id, key, configure]) => {
+      try {
+        await configure(key, controller.signal);
+        setConfiguredProviders((current) => current.includes(id) ? current : [...current, id]);
+      } catch (error) {
+        if (!controller.signal.aborted) console.warn(`Unable to configure browser provider ${id}.`, error);
+      }
+    }));
     return () => controller.abort();
   }, []);
 
@@ -89,12 +100,20 @@ export default function App() {
     setActiveBibleId(newBible.id);
   };
 
-  const handleGeminiKeyChange = async (apiKey: string) => {
-    providerRegistry.unregister('gemini');
-    setIsGeminiActive(false);
+  const handleProviderKeyChange = async (providerId: 'gemini' | 'openai' | 'anthropic' | 'ollama', apiKey: string) => {
+    providerRegistry.unregister(providerId);
+    setConfiguredProviders((current) => current.filter((id) => id !== providerId));
     if (!apiKey) return;
-    await configureGeminiProvider(apiKey);
-    setIsGeminiActive(true);
+    const configure = providerId === 'gemini'
+      ? configureGeminiProvider
+      : providerId === 'openai'
+        ? configureOpenAIProvider
+        : providerId === 'anthropic'
+          ? configureAnthropicProvider
+          : undefined;
+    if (!configure) return;
+    await configure(apiKey);
+    setConfiguredProviders((current) => [...current.filter((id) => id !== providerId), providerId]);
   };
 
   const handleGenerateBibleFromDecoded = (decoded: DecodedImageAesthetic, imageUrl: string) => {
@@ -139,7 +158,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         activeProviders={[
           ...(localServerMode && localServerAvailable ? ['Local server'] : []),
-          ...(!localServerMode && isGeminiActive ? ['Gemini'] : []),
+          ...(!localServerMode ? configuredProviders.map((id) => id === 'gemini' ? 'Gemini' : id === 'openai' ? 'OpenAI' : 'Anthropic') : []),
         ]}
         localServerAvailable={localServerAvailable}
         localServerMode={localServerMode}
@@ -148,9 +167,9 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-8">
-        {!localServerMode && !providerKeys.gemini && (
+        {!localServerMode && !providerKeys.gemini && !providerKeys.openai && !providerKeys.anthropic && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
-            <span>No local server or browser Gemini key is active. Add a key in Settings to enable AI generation on this static deployment.</span>
+            <span>No local server or browser provider key is active. Add a key in Settings to enable AI generation on this static deployment.</span>
             <button onClick={() => setIsSettingsOpen(true)} className="rounded-lg bg-amber-700 px-3 py-1.5 font-semibold text-white hover:bg-amber-600">Open Settings</button>
           </div>
         )}
@@ -344,6 +363,10 @@ export default function App() {
               onUpdateTile={handleUpdateTile}
               onAddTile={handleAddTile}
               onOpenDecoder={() => setIsDecoderOpen(true)}
+              // No adapter implements client-side image generation yet, so this is effectively
+              // localServerMode-only today; reads adapter-level capabilities (not a specific
+              // model) so it stays correct once a browser image-generation adapter exists.
+              canGenerateImages={localServerMode || Boolean(activeProvider?.capabilities.imageGeneration)}
             />
           )}
 
@@ -359,7 +382,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>Aesthetic Bible Flow Generator &copy; 2026 &mdash; Game Design & Worldbuilding System</p>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>Server-side Gemini AI &bull; @google/genai</span>
+            <span>Express fallback &bull; Gemini &bull; OpenAI &bull; Anthropic</span>
           </div>
         </div>
       </footer>
@@ -372,6 +395,7 @@ export default function App() {
         initialDecodedSeed={decodedSeed}
         seedImageUrl={seedImageUrl}
         preferLocalServer={localServerMode}
+        providerKeys={providerKeys}
       />
 
       <ImageDecoderModal
@@ -380,6 +404,7 @@ export default function App() {
         onAddTileToActiveBible={handleAddTile}
         onGenerateBibleFromDecoded={handleGenerateBibleFromDecoded}
         preferLocalServer={localServerMode}
+        providerKeys={providerKeys}
       />
 
       <CohesionAuditModal
@@ -387,6 +412,7 @@ export default function App() {
         onClose={() => setIsAuditOpen(false)}
         activeBible={activeBible}
         preferLocalServer={localServerMode}
+        providerKeys={providerKeys}
       />
 
       <TokenExportModal
@@ -399,7 +425,7 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onGeminiKeyChange={handleGeminiKeyChange}
+        onProviderKeyChange={handleProviderKeyChange}
         onKeysChange={setProviderKeys}
       />
 

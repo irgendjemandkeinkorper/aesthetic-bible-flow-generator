@@ -12,13 +12,15 @@ import {
   FileText
 } from 'lucide-react';
 import { AestheticBible, CohesionAuditResult } from '../types';
-import { providerRegistry } from '../services/providers';
+import { getProviderModelOptions, providerRegistry, resolveProviderModel } from '../services/providers';
+import type { ProviderKeys } from '../services/providerSettings';
 
 interface CohesionAuditModalProps {
   isOpen: boolean;
   onClose: () => void;
   activeBible: AestheticBible;
   preferLocalServer?: boolean;
+  providerKeys: ProviderKeys;
 }
 
 export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
@@ -26,6 +28,7 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
   onClose,
   activeBible,
   preferLocalServer = false,
+  providerKeys,
 }) => {
   const [auditMode, setAuditMode] = useState<'text' | 'image'>('text');
   const [candidateType, setCandidateType] = useState<'Character' | 'Environment' | 'Item/Weapon' | 'UI Component' | 'Lore / Story Quest' | 'Audio / OST Note'>('Character');
@@ -39,6 +42,29 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState<CohesionAuditResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState('');
+  const modelOptions = getProviderModelOptions(providerKeys, providerRegistry.list());
+  const selected = preferLocalServer ? undefined : resolveProviderModel(selectedModel, providerRegistry.list());
+  const enabledModelKeys = modelOptions.filter((option) => option.enabled).map((option) => option.key).join('\0');
+  const visionEnabled = preferLocalServer || !selectedModel || Boolean(selected?.model.capabilities.vision);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (preferLocalServer) {
+      setSelectedModel('');
+      return;
+    }
+
+    const enabled = new Set(enabledModelKeys.split('\0').filter(Boolean));
+    setSelectedModel((current) => current && enabled.has(current) ? current : [...enabled][0] ?? '');
+  }, [isOpen, preferLocalServer, enabledModelKeys]);
+
+  React.useEffect(() => {
+    if (!visionEnabled && auditMode === 'image') {
+      setAuditMode('text');
+      setSelectedImage(null);
+    }
+  }, [visionEnabled, auditMode]);
 
   if (!isOpen) return null;
 
@@ -67,16 +93,21 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
     setAuditResult(null);
 
     try {
-      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
-      if (adapter && auditMode === 'text') {
-        const model = adapter.models[0];
-        if (!model) throw new Error('The active AI provider has no available models.');
-        const result = await adapter.auditCohesion(
+      const selection = preferLocalServer ? undefined : resolveProviderModel(selectedModel, providerRegistry.list());
+      if (!preferLocalServer && selectedModel && !selection) {
+        throw new Error('The selected provider is no longer available. Choose an active model and try again.');
+      }
+      if (selection) {
+        const candidate = auditMode === 'image'
+          ? JSON.stringify(await selection.adapter.decodeImage(selectedImage!, mimeType, selection.model.id))
+          : candidateConcept.trim();
+        const result = await selection.adapter.auditCohesion(
           activeBible,
-          candidateConcept.trim(),
+          candidate,
           candidateType,
-          model.id,
+          selection.model.id,
         );
+        providerRegistry.setActive(selection.adapter.id);
         setAuditResult(result);
         return;
       }
@@ -164,14 +195,16 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
 
           <button
             onClick={() => { setAuditMode('image'); setAuditResult(null); }}
+            disabled={!visionEnabled}
             className={`px-3.5 py-2 text-xs font-mono font-medium border-b-2 flex items-center gap-1.5 transition-all ${
               auditMode === 'image'
                 ? 'border-amber-400 text-amber-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                : 'border-transparent text-slate-400 hover:text-slate-200 disabled:text-slate-700 disabled:cursor-not-allowed'
             }`}
           >
             <ImageIcon className="w-3.5 h-3.5" /> Upload Image Artwork Audit
           </button>
+          {!visionEnabled && <span className="ml-auto pb-2 text-[10px] text-amber-300">Selected model has no vision; text-only audit enforced.</span>}
         </div>
 
         {/* Modal Form */}
@@ -186,6 +219,13 @@ export const CohesionAuditModal: React.FC<CohesionAuditModalProps> = ({
 
           {/* Input Form */}
           <div className="space-y-4 bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
+            <div>
+              <label className="block text-slate-400 mb-1 font-mono uppercase text-[10px]">Provider / model</label>
+              <select value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200">
+                <option value="">Express fallback</option>
+                {modelOptions.map((option) => <option key={option.key} value={option.key} disabled={!option.enabled}>{option.providerLabel} · {option.model.label}{option.enabled ? '' : ' — configure key in Settings'}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-slate-400 mb-1 font-mono uppercase text-[10px]">

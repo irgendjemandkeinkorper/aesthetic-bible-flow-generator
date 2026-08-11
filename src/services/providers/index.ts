@@ -1,10 +1,15 @@
 export * from './types';
 export * from './registry';
 export * from './gemini';
+export * from './openai';
+export * from './anthropic';
 export * from './metrics';
 export * from './validationPipeline';
+export * from './selection';
 
 import { GeminiProviderAdapter } from './gemini';
+import { OpenAIProviderAdapter } from './openai';
+import { AnthropicProviderAdapter } from './anthropic';
 import { providerRegistry } from './registry';
 
 export const GEMINI_API_KEY_STORAGE_KEY = 'aesthetic-bible:gemini-api-key';
@@ -18,4 +23,16 @@ export async function configureGeminiProvider(apiKey: string, signal?: AbortSign
   const adapter = new GeminiProviderAdapter(apiKey);
   await providerRegistry.register(adapter, apiKey, signal);
   providerRegistry.setActive(adapter.id);
+}
+
+export async function configureOpenAIProvider(apiKey: string, signal?: AbortSignal): Promise<void> {
+  providerRegistry.unregister('openai');
+  const adapter = new OpenAIProviderAdapter(apiKey);
+  await providerRegistry.register(adapter, apiKey, signal);
+}
+
+export async function configureAnthropicProvider(apiKey: string, signal?: AbortSignal): Promise<void> {
+  providerRegistry.unregister('anthropic');
+  const adapter = new AnthropicProviderAdapter(apiKey);
+  await providerRegistry.register(adapter, apiKey, signal);
 }

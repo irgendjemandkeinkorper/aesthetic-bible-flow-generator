@@ -23,6 +23,7 @@ interface MoodBoardSectionProps {
   onUpdateTile: (tileId: string, updatedTile: Partial<MoodBoardTile>) => void;
   onAddTile: (newTile: MoodBoardTile) => void;
   onOpenDecoder?: () => void;
+  canGenerateImages?: boolean;
 }
 
 const CATEGORIES: ('All' | MoodTileCategory)[] = [
@@ -41,6 +42,7 @@ export const MoodBoardSection: React.FC<MoodBoardSectionProps> = ({
   onUpdateTile,
   onAddTile,
   onOpenDecoder,
+  canGenerateImages = false,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'All' | MoodTileCategory>('All');
   const [selectedPhilosophy, setSelectedPhilosophy] = useState<string>('All');
@@ -267,17 +269,17 @@ export const MoodBoardSection: React.FC<MoodBoardSectionProps> = ({
                     </button>
 
                     <button
-                      onClick={() => handleRegenerateImage(tile)}
+                      onClick={() => canGenerateImages ? handleRegenerateImage(tile) : copyPrompt(tile.id, tile.promptSpec)}
                       disabled={isGeneratingThis}
                       className="px-2.5 py-1.5 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-200 rounded-lg text-[11px] font-medium backdrop-blur-md flex items-center gap-1 transition-all"
-                      title="Generate new AI visual with Gemini"
+                      title={canGenerateImages ? 'Generate a new AI visual' : 'Selected model cannot generate images; copy its PromptSpec'}
                     >
                       {isGeneratingThis ? (
                         <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                       ) : (
                         <Wand2 className="w-3 h-3 text-cyan-400" />
                       )}
-                      <span>AI Visual</span>
+                      <span>{canGenerateImages ? 'Generate Visual' : 'Copy PromptSpec'}</span>
                     </button>
                   </div>
                 </div>
@@ -348,12 +350,12 @@ export const MoodBoardSection: React.FC<MoodBoardSectionProps> = ({
                   <h3 className="text-base font-bold text-slate-100">{activeModalTile.title}</h3>
                 </div>
                 <button
-                  onClick={() => handleRegenerateImage(activeModalTile)}
+                  onClick={() => canGenerateImages ? handleRegenerateImage(activeModalTile) : copyPrompt(activeModalTile.id, activeModalTile.promptSpec)}
                   disabled={loadingTileId === activeModalTile.id}
                   className="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-xl font-medium text-xs flex items-center gap-1.5"
                 >
                   {loadingTileId === activeModalTile.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  <span>Regenerate Visual</span>
+                  <span>{canGenerateImages ? 'Regenerate Visual' : 'Copy PromptSpec'}</span>
                 </button>
               </div>
 

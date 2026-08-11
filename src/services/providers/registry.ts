@@ -1,8 +1,21 @@
 import type { ProviderAdapter } from './types';
 
+export type ProviderRegistryListener = () => void;
+
 export class ProviderRegistry {
   private readonly adapters = new Map<string, ProviderAdapter>();
   private activeProviderId: string | null = null;
+  private readonly listeners = new Set<ProviderRegistryListener>();
+
+  /** Subscribes to registration/active-provider changes; returns an unsubscribe function. */
+  subscribe(listener: ProviderRegistryListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    this.listeners.forEach((listener) => listener());
+  }
 
   async register(adapter: ProviderAdapter, apiKey: string, signal?: AbortSignal): Promise<void> {
     if (this.adapters.has(adapter.id)) {
@@ -15,6 +28,7 @@ export class ProviderRegistry {
 
     this.adapters.set(adapter.id, adapter);
     this.activeProviderId ??= adapter.id;
+    this.notify();
   }
 
   unregister(providerId: string): boolean {
@@ -22,6 +36,7 @@ export class ProviderRegistry {
     if (this.activeProviderId === providerId) {
       this.activeProviderId = this.adapters.keys().next().value ?? null;
     }
+    if (removed) this.notify();
     return removed;
   }
 
@@ -30,6 +45,7 @@ export class ProviderRegistry {
       throw new Error(`Provider "${providerId}" is not registered.`);
     }
     this.activeProviderId = providerId;
+    this.notify();
   }
 
   get(providerId: string): ProviderAdapter | undefined {
@@ -47,6 +63,7 @@ export class ProviderRegistry {
   clear(): void {
     this.adapters.clear();
     this.activeProviderId = null;
+    this.notify();
   }
 }
 

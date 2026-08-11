@@ -11,19 +11,19 @@ import {
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGeminiKeyChange: (apiKey: string) => Promise<void>;
+  onProviderKeyChange: (providerId: ProviderId, apiKey: string) => Promise<void>;
   onKeysChange: (keys: ProviderKeys) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
-  onGeminiKeyChange,
+  onProviderKeyChange,
   onKeysChange,
 }) => {
   const [keys, setKeys] = useState<ProviderKeys>(() => readProviderKeys(window.localStorage));
   const [message, setMessage] = useState<string | null>(null);
-  const [isSavingGemini, setIsSavingGemini] = useState(false);
+  const [savingProvider, setSavingProvider] = useState<ProviderId | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,15 +40,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setKeys(nextKeys);
     onKeysChange(nextKeys);
 
-    if (providerId === 'gemini') {
-      setIsSavingGemini(true);
+    if (providerId !== 'ollama') {
+      setSavingProvider(providerId);
       try {
-        await onGeminiKeyChange(value);
-        setMessage(value ? 'Gemini key saved and browser provider activated.' : 'Gemini key removed.');
+        await onProviderKeyChange(providerId, value);
+        const label = PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label;
+        setMessage(value ? `${label} key saved and browser provider activated.` : `${label} key removed.`);
       } catch (error) {
-        setMessage(`Gemini key was saved, but activation failed: ${error instanceof Error ? error.message : String(error)}`);
+        setMessage(`Key was saved, but activation failed: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
-        setIsSavingGemini(false);
+        setSavingProvider(null);
       }
       return;
     }
@@ -61,7 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     persistProviderKey(window.localStorage, providerId, '');
     setKeys(nextKeys);
     onKeysChange(nextKeys);
-    if (providerId === 'gemini') await onGeminiKeyChange('');
+    if (providerId !== 'ollama') await onProviderKeyChange(providerId, '');
     setMessage(`${PROVIDER_SETTINGS.find((provider) => provider.id === providerId)?.label} key deleted from this browser.`);
   };
 
@@ -83,7 +84,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="p-6 space-y-5">
           <div className="rounded-xl border border-amber-800/70 bg-amber-950/30 p-3 text-xs text-amber-200">
-            Treat browser-stored API keys like passwords. They never leave your browser except when sent directly to the selected provider. Avoid shared or public computers.
+            Direct browser access exposes Gemini, OpenAI, and Anthropic keys to anyone with browser developer-tools access. Treat them like passwords: use restricted keys, avoid shared devices, and revoke any key you suspect was exposed. Keys are sent only to the selected provider.
           </div>
 
           {PROVIDER_SETTINGS.map((provider) => (
@@ -110,7 +111,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
                 <button
                   onClick={() => void saveKey(provider.id)}
-                  disabled={provider.id === 'gemini' && isSavingGemini}
+                  disabled={savingProvider === provider.id}
                   className="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-xs flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" /> Save

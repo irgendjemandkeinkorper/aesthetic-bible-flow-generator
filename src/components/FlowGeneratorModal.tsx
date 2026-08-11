@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { GenreCategory, FineTuningState, GenerationPromptInput, AestheticBible, DecodedImageAesthetic } from '../types';
 import { providerRegistry, runBibleGeneration } from '../services/providers';
+import { getProviderModelOptions, resolveProviderModel } from '../services/providers';
+import type { ProviderKeys } from '../services/providerSettings';
 
 interface FlowGeneratorModalProps {
   isOpen: boolean;
@@ -22,6 +24,7 @@ interface FlowGeneratorModalProps {
   initialDecodedSeed?: DecodedImageAesthetic | null;
   seedImageUrl?: string | null;
   preferLocalServer?: boolean;
+  providerKeys: ProviderKeys;
 }
 
 const GENRE_OPTIONS: { category: GenreCategory; label: string; desc: string }[] = [
@@ -57,6 +60,7 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   initialDecodedSeed,
   seedImageUrl,
   preferLocalServer = false,
+  providerKeys,
 }) => {
   const [genre, setGenre] = useState<GenreCategory>('Clockwork / Dieselpunk Alchemy');
   const [title, setTitle] = useState('');
@@ -79,6 +83,24 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const modelOptions = getProviderModelOptions(providerKeys, providerRegistry.list());
+  const enabledModelKeys = modelOptions.filter((option) => option.enabled).map((option) => option.key).join('\0');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (preferLocalServer) {
+      setSelectedModels([]);
+      return;
+    }
+
+    const enabled = new Set(enabledModelKeys.split('\0').filter(Boolean));
+    setSelectedModels((current) => {
+      const valid = current.filter((key) => enabled.has(key));
+      if (valid.length === current.length && valid.length > 0) return current;
+      return valid.length > 0 ? valid : [...enabled].slice(0, 1);
+    });
+  }, [isOpen, preferLocalServer, enabledModelKeys]);
 
   useEffect(() => {
     if (initialDecodedSeed) {
@@ -144,12 +166,45 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
       setTimeout(() => setGenerationStep('Formulating Typography Pairings & Shape Language Rules...'), 2600);
       setTimeout(() => setGenerationStep('Curating Automated Mood Board Tiles & Visual Prompts...'), 4200);
 
-      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
-      let generatedBible: AestheticBible;
-      if (adapter) {
-        const model = adapter.models[0];
-        if (!model) throw new Error('The active AI provider has no available models.');
-        generatedBible = (await runBibleGeneration(adapter, payload, model.id)).bible!;
+      const selections = (preferLocalServer ? [] : selectedModels)
+        .map((selection) => resolveProviderModel(selection, providerRegistry.list()))
+        .filter((selection): selection is NonNullable<typeof selection> => Boolean(selection));
+      if (!preferLocalServer && selections.length !== selectedModels.length) {
+        throw new Error('A selected provider is no longer available. Choose an active model and try again.');
+      }
+      if (selections.length) {
+        const settled = await Promise.allSettled(
+          selections.map(({ adapter, model }) => runBibleGeneration(adapter, payload, model.id)),
+        );
+        const successes = settled.flatMap((result, index) => result.status === 'fulfilled' && result.value.bible
+          ? [{ run: result.value, selection: selections[index] }]
+          : []);
+        const failures = settled.flatMap((result, index) => result.status === 'rejected'
+          ? [`${selections[index].adapter.label} · ${selections[index].model.label}: ${result.reason instanceof Error ? result.reason.message : 'Generation failed'}`]
+          : []);
+
+        const seenIds = new Set<string>();
+        successes.forEach(({ run, selection }) => {
+          const bible = run.bible!;
+          const uniqueBible = seenIds.has(bible.id)
+            ? { ...bible, id: `${bible.id}-${selection.adapter.id}-${selection.model.id}` }
+            : bible;
+          seenIds.add(uniqueBible.id);
+          onBibleGenerated(uniqueBible);
+        });
+        const displayed = successes.at(-1);
+        if (displayed) providerRegistry.setActive(displayed.selection.adapter.id);
+
+        if (failures.length > 0) {
+          const summary = successes.length > 0
+            ? `Generated ${successes.length} Bible${successes.length === 1 ? '' : 's'}, but ${failures.length} provider${failures.length === 1 ? '' : 's'} failed: ${failures.join('; ')}`
+            : failures.join('; ');
+          if (successes.length > 0) {
+            setErrorMsg(summary);
+            return;
+          }
+          throw new Error(summary);
+        }
       } else {
         const res = await fetch('/api/generate-bible', {
           method: 'POST',
@@ -161,9 +216,9 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
           const errData = await res.json();
           throw new Error(errData?.error || 'Failed to generate Aesthetic Bible.');
         }
-        generatedBible = await res.json();
+        const generatedBible: AestheticBible = await res.json();
+        onBibleGenerated(generatedBible);
       }
-      onBibleGenerated(generatedBible);
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -211,6 +266,20 @@ export const FlowGeneratorModal: React.FC<FlowGeneratorModalProps> = ({
               <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-200">Dismiss</button>
             </div>
           )}
+
+          <fieldset className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+            <legend className="px-1 text-xs font-mono font-semibold uppercase tracking-wider text-cyan-400">Provider models</legend>
+            <p className="text-[11px] text-slate-400">Select one or more configured models. Each selected model creates a separate Bible.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {modelOptions.map((option) => (
+                <label key={option.key} className={`flex items-center gap-2 rounded-lg border p-2 text-xs ${option.enabled ? 'border-slate-700 text-slate-200' : 'border-slate-800 text-slate-600'}`} title={option.disabledReason}>
+                  <input type="checkbox" checked={selectedModels.includes(option.key)} disabled={!option.enabled || isGenerating} onChange={(event) => setSelectedModels((current) => event.target.checked ? [...current, option.key] : current.filter((key) => key !== option.key))} />
+                  <span>{option.providerLabel} · {option.model.label}</span>
+                </label>
+              ))}
+            </div>
+            {!modelOptions.some((option) => option.enabled) && <p className="text-[11px] text-amber-300">No browser provider is configured; generation will use the Express fallback.</p>}
+          </fieldset>
 
           {/* Section 1: Project Identity & Genre */}
           <div className="space-y-3">
