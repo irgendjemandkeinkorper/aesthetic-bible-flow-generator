@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Compass, 
   Sparkles, 
@@ -31,6 +31,7 @@ import { CohesionAuditModal } from './components/CohesionAuditModal';
 import { TokenExportModal } from './components/TokenExportModal';
 import { ImageDecoderModal } from './components/ImageDecoderModal';
 import { ClaudeDesignPlaygroundSection } from './components/ClaudeDesignPlaygroundSection';
+import { configureGeminiProvider, GEMINI_API_KEY_STORAGE_KEY } from './services/providers';
 
 export default function App() {
   const [bibles, setBibles] = useState<AestheticBible[]>(INITIAL_PRESETS);
@@ -46,6 +47,16 @@ export default function App() {
   const [seedImageUrl, setSeedImageUrl] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<'manifesto' | 'colors' | 'typography' | 'shape' | 'interface' | 'moodboard' | 'playground'>('manifesto');
+
+  useEffect(() => {
+    const apiKey = window.localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
+    if (!apiKey) return;
+    const controller = new AbortController();
+    void configureGeminiProvider(apiKey, controller.signal).catch((error: unknown) => {
+      if (!controller.signal.aborted) console.warn('Unable to configure the browser Gemini provider.', error);
+    });
+    return () => controller.abort();
+  }, []);
 
   const activeBible = bibles.find((b) => b.id === activeBibleId) || bibles[0];
 

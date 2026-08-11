@@ -45,3 +45,17 @@ export interface GenerationPromptInput {
   visualMood: string;
   fineTuning?: FineTuningState;
 }
+
+export type RunStatus = 'success' | 'failed' | 'aborted';
+
+/** A single instrumented provider generation attempt. */
+export interface Run {
+  providerId: string;
+  modelId: string;
+  latencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  bible: AestheticBible | null;
+  status: RunStatus;
+}

@@ -17,6 +17,7 @@ import {
   AlertOctagon
 } from 'lucide-react';
 import { DecodedImageAesthetic, MoodBoardTile, MoodTileCategory } from '../types';
+import { providerRegistry } from '../services/providers';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_DIMENSION = 8_192;
@@ -119,21 +120,25 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
     setDecodedResult(null);
 
     try {
-      const res = await fetch('/api/decode-image-aesthetic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: selectedImage,
-          mimeType,
-        }),
-      });
+      const adapter = providerRegistry.getActive();
+      let data: DecodedImageAesthetic;
+      if (adapter) {
+        const model = adapter.models.find((candidate) => candidate.capabilities.vision);
+        if (!model) throw new Error('The active AI provider does not support image decoding.');
+        data = await adapter.decodeImage(selectedImage, mimeType, model.id);
+      } else {
+        const res = await fetch('/api/decode-image-aesthetic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: selectedImage, mimeType }),
+        });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.error || 'Failed to decode image aesthetic.');
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData?.error || 'Failed to decode image aesthetic.');
+        }
+        data = await res.json();
       }
-
-      const data: DecodedImageAesthetic = await res.json();
       setDecodedResult(data);
     } catch (err: any) {
       console.error(err);

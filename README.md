@@ -17,7 +17,9 @@ The local server runs at `http://localhost:3000`.
 
 ## GitHub Pages
 
-The repository includes a GitHub Actions workflow that deploys the client build from `dist/` whenever `main` is updated. The static site includes the curated preset experience; AI generation, image decoding, regeneration, and cohesion audits require the Express server because the Gemini API key must remain private.
+The repository includes a GitHub Actions workflow that deploys the client build from `dist/` whenever `main` is updated. The static site includes the curated preset experience. By default, AI requests continue to use the Express API so its Gemini key remains private.
+
+The provider abstraction also supports an opt-in, user-supplied browser key. Store it under `aesthetic-bible:gemini-api-key` in browser local storage and reload; generation, image decoding, and text cohesion audits then use the client-side Gemini adapter. This exposes that key to the browser and should only be used with a key the user owns and intends for client-side use. Removing the value restores the Express fallback.
 
 To use the full AI feature set in production, deploy the Node server to a host that supports environment secrets and set `GEMINI_API_KEY` there.
 
