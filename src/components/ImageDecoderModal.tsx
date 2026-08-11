@@ -17,7 +17,8 @@ import {
   AlertOctagon
 } from 'lucide-react';
 import { DecodedImageAesthetic, MoodBoardTile, MoodTileCategory } from '../types';
-import { providerRegistry } from '../services/providers';
+import { getProviderModelOptions, providerRegistry, resolveProviderModel } from '../services/providers';
+import type { ProviderKeys } from '../services/providerSettings';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_DIMENSION = 8_192;
@@ -45,6 +46,7 @@ interface ImageDecoderModalProps {
   onAddTileToActiveBible: (tile: MoodBoardTile) => void;
   onGenerateBibleFromDecoded: (decoded: DecodedImageAesthetic, imageUrl: string) => void;
   preferLocalServer?: boolean;
+  providerKeys: ProviderKeys;
 }
 
 export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
@@ -53,6 +55,7 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
   onAddTileToActiveBible,
   onGenerateBibleFromDecoded,
   preferLocalServer = false,
+  providerKeys,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
@@ -61,6 +64,23 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [tileAddedSuccess, setTileAddedSuccess] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
+  const modelOptions = getProviderModelOptions(providerKeys, providerRegistry.list());
+  const enabledVisionModelKeys = modelOptions
+    .filter((option) => option.enabled && option.model.capabilities.vision)
+    .map((option) => option.key)
+    .join('\0');
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (preferLocalServer) {
+      setSelectedModel('');
+      return;
+    }
+
+    const enabled = new Set(enabledVisionModelKeys.split('\0').filter(Boolean));
+    setSelectedModel((current) => current && enabled.has(current) ? current : [...enabled][0] ?? '');
+  }, [isOpen, preferLocalServer, enabledVisionModelKeys]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,12 +142,15 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
     setDecodedResult(null);
 
     try {
-      const adapter = preferLocalServer ? undefined : providerRegistry.getActive();
+      const selection = preferLocalServer ? undefined : resolveProviderModel(selectedModel, providerRegistry.list());
+      if (!preferLocalServer && selectedModel && !selection) {
+        throw new Error('The selected provider is no longer available. Choose an active model and try again.');
+      }
       let data: DecodedImageAesthetic;
-      if (adapter) {
-        const model = adapter.models.find((candidate) => candidate.capabilities.vision);
-        if (!model) throw new Error('The active AI provider does not support image decoding.');
-        data = await adapter.decodeImage(selectedImage, mimeType, model.id);
+      if (selection) {
+        if (!selection.model.capabilities.vision) throw new Error('The selected model does not support image decoding.');
+        data = await selection.adapter.decodeImage(selectedImage, mimeType, selection.model.id);
+        providerRegistry.setActive(selection.adapter.id);
       } else {
         const res = await fetch('/api/decode-image-aesthetic', {
           method: 'POST',
@@ -215,6 +238,14 @@ export const ImageDecoderModal: React.FC<ImageDecoderModalProps> = ({
               <button onClick={() => setErrorMsg(null)} className="text-rose-400 font-bold">Dismiss</button>
             </div>
           )}
+
+          <div>
+            <label className="block text-slate-400 mb-1 font-mono uppercase text-[10px]">Vision provider / model</label>
+            <select value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200">
+              <option value="">Express fallback</option>
+              {modelOptions.map((option) => <option key={option.key} value={option.key} disabled={!option.enabled || !option.model.capabilities.vision}>{option.providerLabel} · {option.model.label}{option.enabled ? '' : ' — configure key in Settings'}</option>)}
+            </select>
+          </div>
 
           {/* Image Upload Area */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

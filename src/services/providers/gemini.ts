@@ -27,7 +27,9 @@ export interface GeminiClientLike {
 const CAPABILITIES: ProviderCapabilities = {
   structuredOutput: true,
   vision: true,
-  imageGeneration: true,
+  // This adapter currently supports text and vision requests only. Mood-board
+  // image generation remains an Express-server capability.
+  imageGeneration: false,
 };
 
 export const GEMINI_MODELS: readonly ProviderModel[] = [

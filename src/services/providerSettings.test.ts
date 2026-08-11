@@ -5,7 +5,7 @@ import {
   OLLAMA_API_KEY_STORAGE_KEY,
   OPENAI_API_KEY_STORAGE_KEY,
 } from './providers';
-import { persistProviderKey, readProviderKeys } from './providerSettings';
+import { persistProviderKey, PROVIDER_SETTINGS, readProviderKeys } from './providerSettings';
 
 function createStorage(): Storage {
   const values = new Map<string, string>();
@@ -20,6 +20,9 @@ function createStorage(): Storage {
 }
 
 describe('provider settings persistence', () => {
+  it('marks all implemented cloud adapters as available', () => {
+    expect(PROVIDER_SETTINGS.filter((provider) => ['gemini', 'openai', 'anthropic'].includes(provider.id)).every((provider) => provider.available)).toBe(true);
+  });
   it('persists trimmed provider keys under provider-specific keys', () => {
     const storage = createStorage();
     persistProviderKey(storage, 'gemini', '  gemini-secret  ');

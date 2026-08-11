@@ -30,5 +30,44 @@ describe('ProviderRegistry', () => {
     await registry.register(adapter('gemini'), 'valid');
     await expect(registry.register(adapter('gemini'), 'valid')).rejects.toThrow('already registered');
   });
+
+  it('notifies subscribers on register, setActive, unregister, and clear', async () => {
+    const registry = new ProviderRegistry();
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    await registry.register(adapter('gemini'), 'valid');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    await registry.register(adapter('openai'), 'valid');
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    registry.setActive('openai');
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    registry.unregister('openai');
+    expect(listener).toHaveBeenCalledTimes(4);
+    expect(registry.getActive()?.id).toBe('gemini');
+
+    registry.clear();
+    expect(listener).toHaveBeenCalledTimes(5);
+    expect(registry.getActive()).toBeUndefined();
+  });
+
+  it('stops notifying after unsubscribe, and skips notify on no-op unregister', async () => {
+    const registry = new ProviderRegistry();
+    const listener = vi.fn();
+    const unsubscribe = registry.subscribe(listener);
+
+    await registry.register(adapter('gemini'), 'valid');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    expect(registry.unregister('missing')).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    registry.setActive('gemini');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
 });
 
