@@ -20,24 +20,24 @@ function createStorage(): Storage {
 }
 
 describe('provider settings persistence', () => {
-  it('marks all implemented cloud adapters as available', () => {
-    expect(PROVIDER_SETTINGS.filter((provider) => ['gemini', 'openai', 'anthropic'].includes(provider.id)).every((provider) => provider.available)).toBe(true);
+  it('marks all implemented adapters as available', () => {
+    expect(PROVIDER_SETTINGS.every((provider) => provider.available)).toBe(true);
   });
   it('persists trimmed provider keys under provider-specific keys', () => {
     const storage = createStorage();
     persistProviderKey(storage, 'gemini', '  gemini-secret  ');
     persistProviderKey(storage, 'openai', 'openai-secret');
     persistProviderKey(storage, 'anthropic', 'anthropic-secret');
-    persistProviderKey(storage, 'ollama', 'ollama-secret');
+    persistProviderKey(storage, 'ollama', '  http://localhost:11434  ');
     expect(storage.getItem(GEMINI_API_KEY_STORAGE_KEY)).toBe('gemini-secret');
     expect(storage.getItem(OPENAI_API_KEY_STORAGE_KEY)).toBe('openai-secret');
     expect(storage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY)).toBe('anthropic-secret');
-    expect(storage.getItem(OLLAMA_API_KEY_STORAGE_KEY)).toBe('ollama-secret');
+    expect(storage.getItem(OLLAMA_API_KEY_STORAGE_KEY)).toBe('http://localhost:11434');
     expect(readProviderKeys(storage)).toEqual({
       gemini: 'gemini-secret',
       openai: 'openai-secret',
       anthropic: 'anthropic-secret',
-      ollama: 'ollama-secret',
+      ollama: 'http://localhost:11434',
     });
   });
 

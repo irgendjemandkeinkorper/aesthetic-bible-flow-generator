@@ -2,11 +2,12 @@ import type { ProviderKeys } from '../providerSettings';
 import { ANTHROPIC_MODELS } from './anthropic';
 import { GEMINI_MODELS } from './gemini';
 import { OPENAI_MODELS } from './openai';
+import { OLLAMA_MODELS } from './ollama';
 import type { ProviderAdapter, ProviderCapabilities, ProviderModel } from './types';
 
 export interface ProviderModelOption {
   key: string;
-  providerId: 'gemini' | 'openai' | 'anthropic';
+  providerId: 'gemini' | 'openai' | 'anthropic' | 'ollama';
   providerLabel: string;
   model: ProviderModel;
   enabled: boolean;
@@ -17,6 +18,7 @@ const CATALOG = [
   { id: 'gemini' as const, label: 'Google Gemini', models: GEMINI_MODELS },
   { id: 'openai' as const, label: 'OpenAI', models: OPENAI_MODELS },
   { id: 'anthropic' as const, label: 'Anthropic', models: ANTHROPIC_MODELS },
+  { id: 'ollama' as const, label: 'Ollama (local)', models: OLLAMA_MODELS },
 ];
 
 export function providerModelKey(providerId: string, modelId: string): string {
@@ -29,15 +31,17 @@ export function getProviderModelOptions(
 ): ProviderModelOption[] {
   const registered = new Set(adapters.map((adapter) => adapter.id));
   return CATALOG.flatMap((provider) => provider.models.map((model) => {
-    const hasKey = Boolean(keys[provider.id].trim());
+    const isConfigured = Boolean(keys[provider.id].trim());
     const isRegistered = registered.has(provider.id);
     return {
       key: providerModelKey(provider.id, model.id),
       providerId: provider.id,
       providerLabel: provider.label,
       model,
-      enabled: hasKey && isRegistered,
-      disabledReason: !hasKey ? 'Add a key in Settings' : !isRegistered ? 'Provider is still activating' : undefined,
+      enabled: isConfigured && isRegistered,
+      disabledReason: !isConfigured
+        ? provider.id === 'ollama' ? 'Add the local server URL in Settings' : 'Add a key in Settings'
+        : !isRegistered ? 'Provider is still activating' : undefined,
     };
   }));
 }

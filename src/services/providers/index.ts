@@ -3,6 +3,7 @@ export * from './registry';
 export * from './gemini';
 export * from './openai';
 export * from './anthropic';
+export * from './ollama';
 export * from './metrics';
 export * from './validationPipeline';
 export * from './selection';
@@ -10,6 +11,7 @@ export * from './selection';
 import { GeminiProviderAdapter } from './gemini';
 import { OpenAIProviderAdapter } from './openai';
 import { AnthropicProviderAdapter } from './anthropic';
+import { OllamaProviderAdapter } from './ollama';
 import { providerRegistry } from './registry';
 
 export const GEMINI_API_KEY_STORAGE_KEY = 'aesthetic-bible:gemini-api-key';
@@ -35,4 +37,11 @@ export async function configureAnthropicProvider(apiKey: string, signal?: AbortS
   providerRegistry.unregister('anthropic');
   const adapter = new AnthropicProviderAdapter(apiKey);
   await providerRegistry.register(adapter, apiKey, signal);
+}
+
+/** Registers a keyless browser-side Ollama adapter after checking the local server. */
+export async function configureOllamaProvider(baseUrl: string, signal?: AbortSignal): Promise<void> {
+  providerRegistry.unregister('ollama');
+  const adapter = new OllamaProviderAdapter(baseUrl);
+  await providerRegistry.register(adapter, '', signal);
 }

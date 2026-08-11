@@ -21,9 +21,11 @@ export class ProviderRegistry {
     if (this.adapters.has(adapter.id)) {
       throw new Error(`Provider "${adapter.id}" is already registered.`);
     }
-    if (!apiKey.trim()) throw new Error('An API key is required.');
+    if (adapter.requiresApiKey !== false && !apiKey.trim()) throw new Error('An API key is required.');
     if (!(await adapter.validateApiKey(apiKey, signal))) {
-      throw new Error(`Invalid API key for provider "${adapter.id}".`);
+      throw new Error(adapter.requiresApiKey === false
+        ? `Provider "${adapter.id}" is unavailable.`
+        : `Invalid API key for provider "${adapter.id}".`);
     }
 
     this.adapters.set(adapter.id, adapter);
@@ -68,4 +70,3 @@ export class ProviderRegistry {
 }
 
 export const providerRegistry = new ProviderRegistry();
-

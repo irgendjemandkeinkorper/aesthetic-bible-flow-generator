@@ -31,6 +31,20 @@ describe('ProviderRegistry', () => {
     await expect(registry.register(adapter('gemini'), 'valid')).rejects.toThrow('already registered');
   });
 
+  it('allows an explicitly keyless provider while still validating reachability', async () => {
+    const registry = new ProviderRegistry();
+    const ollama = { ...adapter('ollama'), requiresApiKey: false };
+    await registry.register(ollama, '');
+    expect(ollama.validateApiKey).toHaveBeenCalledWith('', undefined);
+    expect(registry.get('ollama')).toBe(ollama);
+  });
+
+  it('reports an unavailable keyless provider without calling its config an API key', async () => {
+    const registry = new ProviderRegistry();
+    const ollama = { ...adapter('ollama', false), requiresApiKey: false };
+    await expect(registry.register(ollama, '')).rejects.toThrow('Provider "ollama" is unavailable');
+  });
+
   it('notifies subscribers on register, setActive, unregister, and clear', async () => {
     const registry = new ProviderRegistry();
     const listener = vi.fn();
@@ -70,4 +84,3 @@ describe('ProviderRegistry', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
-
