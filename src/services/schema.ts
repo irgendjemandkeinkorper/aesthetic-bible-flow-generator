@@ -159,7 +159,7 @@ export const AestheticBibleSchema = z.object({
   interfaceAndHUD: InterfaceAndHUDSchema,
   moodBoard: z.array(MoodBoardTileSchema),
   fineTuning: FineTuningStateSchema
-});
+}).strip();
 
 export const RunStatusSchema = z.enum(['success', 'failed', 'aborted']);
 
@@ -176,7 +176,7 @@ export const RunSchema = z.object({
   id: z.string().optional(),
   completedAt: z.string().optional(),
   pinned: z.boolean().optional(),
-});
+}).strip();
 
 export const ComparisonAuditSchema = z.object({
   summary: z.string(),

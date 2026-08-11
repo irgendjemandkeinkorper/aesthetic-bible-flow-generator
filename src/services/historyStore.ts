@@ -84,6 +84,29 @@ export function addRunToHistory(storage: HistoryStorage, run: Run): Run[] {
   return writeRunHistory(storage, evictExcessUnpinnedRuns([completed, ...history]));
 }
 
+export function importRunsToHistory(storage: HistoryStorage, runs: readonly Run[]): Run[] {
+  const validated = runs.map((candidate, index) => {
+    const result = RunSchema.safeParse(candidate);
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      const location = issue?.path.length ? ` at ${issue.path.join('.')}` : '';
+      throw new Error(`Imported run ${index + 1} is invalid${location}: ${issue?.message ?? 'schema validation failed'}`);
+    }
+    return normalizeCompletedRun(result.data);
+  });
+
+  const existing = readRunHistory(storage);
+  const existingIds = new Set(existing.map((run) => run.id));
+  const importedIds = new Set<string | undefined>();
+  const newRuns = validated.filter((run) => {
+    if (existingIds.has(run.id) || importedIds.has(run.id)) return false;
+    importedIds.add(run.id);
+    return true;
+  });
+
+  return writeRunHistory(storage, evictExcessUnpinnedRuns([...newRuns, ...existing]));
+}
+
 export function setRunPinned(storage: HistoryStorage, runId: string, pinned: boolean): Run[] {
   return writeRunHistory(storage, readRunHistory(storage).map((run) => (
     run.id === runId ? { ...run, pinned } : run

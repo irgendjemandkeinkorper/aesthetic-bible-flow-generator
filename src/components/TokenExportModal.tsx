@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { X, Code2, Copy, Check, Download, Upload } from 'lucide-react';
-import { AestheticBible } from '../types';
+import { AestheticBible, Run } from '../types';
 import { stringifyFigmaInterchange } from '../services/figmaExport';
 import { parseAestheticBibleJson } from '../services/bibleImport';
 
@@ -9,6 +9,7 @@ interface TokenExportModalProps {
   onClose: () => void;
   bible: AestheticBible;
   onImportBible: (bible: AestheticBible) => void;
+  onImportRuns: (runs: Run[]) => void;
 }
 
 export const TokenExportModal: React.FC<TokenExportModalProps> = ({
@@ -16,6 +17,7 @@ export const TokenExportModal: React.FC<TokenExportModalProps> = ({
   onClose,
   bible,
   onImportBible,
+  onImportRuns,
 }) => {
   const [activeTab, setActiveTab] = useState<'css' | 'markdown' | 'json' | 'bible' | 'engine'>('css');
   const [isCopied, setIsCopied] = useState(false);
@@ -203,8 +205,13 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
         setImportMessage(`Import failed: ${result.error}`);
         return;
       }
-      onImportBible(result.bible);
-      setImportMessage(`Imported “${result.bible.title}” successfully.`);
+      if (result.runs) {
+        onImportRuns(result.runs);
+        setImportMessage(`Imported ${result.runs.length} run${result.runs.length === 1 ? '' : 's'} successfully. Existing run IDs were left unchanged.`);
+      } else {
+        onImportBible(result.bible);
+        setImportMessage(`Imported “${result.bible.title}” successfully.`);
+      }
     } catch (error) {
       setImportMessage(`Import failed: ${error instanceof Error ? error.message : 'Unable to read the selected file.'}`);
     } finally {
@@ -313,7 +320,7 @@ public static class ${bible.title.replace(/[^a-zA-Z0-9]/g, '')}Tokens
 
           <div className="flex items-center gap-3">
             <label className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer">
-              <Upload className="w-3.5 h-3.5" /> Import Bible
+              <Upload className="w-3.5 h-3.5" /> Import Bible / Runs
               <input type="file" accept="application/json,.json" onChange={(event) => void importBibleFile(event)} className="sr-only" />
             </label>
             <button
