@@ -5,6 +5,7 @@ import {
   RUN_HISTORY_STORAGE_KEY,
   addRunToHistory,
   clearRunHistory,
+  importRunsToHistory,
   readRunHistory,
   serializeRunOutputs,
   setRunPinned,
@@ -84,5 +85,25 @@ describe('run history store', () => {
     expect(document.version).toBe(1);
     expect(document.outputs).toHaveLength(1);
     expect(document.outputs[0]).toEqual(expect.objectContaining({ runId: 'success', providerId: 'openai' }));
+  });
+
+  it('imports run IDs idempotently and preserves the existing record on re-import', () => {
+    const storage = createStorage();
+    const imported = completedRun({ id: 'same-run', completedAt: '2026-08-11T00:00:00.000Z' });
+    expect(importRunsToHistory(storage, [imported])).toHaveLength(1);
+    const pinned = setRunPinned(storage, 'same-run', true);
+
+    const reimported = importRunsToHistory(storage, [imported, imported]);
+    expect(reimported).toHaveLength(1);
+    expect(reimported[0]).toEqual(pinned[0]);
+  });
+
+  it('does not write any history when one imported run is invalid', () => {
+    const storage = createStorage();
+    const existing = addRunToHistory(storage, completedRun({ id: 'existing' }));
+    const invalid = { ...completedRun({ id: 'invalid' }), latencyMs: -1 };
+
+    expect(() => importRunsToHistory(storage, [completedRun({ id: 'new' }), invalid])).toThrow('Imported run 2 is invalid');
+    expect(readRunHistory(storage)).toEqual(existing);
   });
 });

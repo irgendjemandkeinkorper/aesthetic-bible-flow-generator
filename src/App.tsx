@@ -37,7 +37,7 @@ import { configureAnthropicProvider, configureGeminiProvider, configureOllamaPro
 import { GenerationGuard } from './services/providers/generationGuard';
 import { detectLocalServer } from './services/localServer';
 import { readProviderKeys, type ProviderKeys } from './services/providerSettings';
-import { addRunToHistory, clearRunHistory, exportRunOutputs, readRunHistory, setRunPinned } from './services/historyStore';
+import { addRunToHistory, clearRunHistory, exportRunOutputs, importRunsToHistory, readRunHistory, setRunPinned } from './services/historyStore';
 
 export default function App() {
   const [bibles, setBibles] = useState<AestheticBible[]>(INITIAL_PRESETS);
@@ -199,6 +199,10 @@ export default function App() {
     } catch (error) {
       console.warn('Unable to clear run history.', error);
     }
+  };
+
+  const handleImportRuns = (runs: Run[]) => {
+    setRunHistory(importRunsToHistory(window.localStorage, runs));
   };
 
   return (
@@ -499,6 +503,7 @@ export default function App() {
         onClose={() => setIsExportOpen(false)}
         bible={activeBible}
         onImportBible={handleBibleGenerated}
+        onImportRuns={handleImportRuns}
       />
 
       <SettingsModal
