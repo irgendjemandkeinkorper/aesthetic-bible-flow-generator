@@ -1,13 +1,15 @@
 import React from 'react';
 import { Monitor, Volume2, MoveRight, Sliders } from 'lucide-react';
-import { InterfaceAndHUD } from '../types';
+import { InterfaceAndHUD, MusicDirection } from '../types';
 
 interface InterfaceHudSectionProps {
   interfaceAndHUD: InterfaceAndHUD;
+  musicDirection?: MusicDirection;
 }
 
 export const InterfaceHudSection: React.FC<InterfaceHudSectionProps> = ({
   interfaceAndHUD,
+  musicDirection,
 }) => {
   return (
     <div id="section-interface-hud" className="space-y-6">
@@ -66,6 +68,33 @@ export const InterfaceHudSection: React.FC<InterfaceHudSectionProps> = ({
           </p>
         </div>
 
+      </div>
+
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-violet-400 font-semibold flex items-center gap-1.5">
+            <Volume2 className="w-3.5 h-3.5" /> Auditory Profile
+          </span>
+          <h4 className="mt-2 text-sm font-bold text-slate-100">
+            {musicDirection?.coreThemeSpec || 'No dedicated music direction yet'}
+          </h4>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Instrumentation</p>
+            <p className="mt-1 text-xs text-slate-300 leading-relaxed">
+              {musicDirection?.instrumentation?.length
+                ? musicDirection.instrumentation.join(' · ')
+                : 'Instrumentation will be derived from the visual and emotional direction.'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Suno / Udio Prompt</p>
+            <p className="mt-1 text-xs text-slate-300 leading-relaxed">
+              {musicDirection?.generativePromptSpec || 'Generate or import an updated bible to create a production-ready music prompt.'}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

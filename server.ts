@@ -2,6 +2,8 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { buildAestheticBiblePrompt } from './src/services/providers/prompt';
+import { GamePerspectiveSchema, MechanicsArchetypeSchema, RenderingStyleSchema } from './src/services/schema';
 
 const DEFAULT_RATE_LIMIT = 100;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -295,20 +297,8 @@ app.post('/api/generate-bible', async (req, res) => {
       });
     }
 
-    const { genre, subgenre, philosophyAnchors, visualMood, fineTuning, title } = req.body;
-
-    const prompt = `You are a world-class Lead Art Director, Game Designer, and Speculative Worldbuilder.
-Generate a comprehensive, mathematically sound, and deeply cohesive "Aesthetic Bible" (Design System and Style Guidelines) for a game/visual project.
-
-Input Parameters:
-- Title Idea: ${title || 'Automated Aesthetic Flow'}
-- Genre Category: ${genre}
-- Subgenre: ${subgenre || 'Speculative World'}
-- Philosophy Anchors: ${Array.isArray(philosophyAnchors) ? philosophyAnchors.join(', ') : philosophyAnchors}
-- Visual Mood & Direction: ${visualMood}
-- Fine-Tuning Parameters: Visual Density (${fineTuning?.density || 7}/10), Contrast (${fineTuning?.contrast || 8}/10), Era Blend (${fineTuning?.eraBlend || 'Modern Speculative'}), Saturation (${fineTuning?.saturation || 6}/10), Philosophical Depth (${fineTuning?.philosophicalDepth || 8}/10)
-
-Produce a full Aesthetic Bible JSON adhering to the required schema. Ensure the color palette uses valid 6-character hex codes (e.g., #1A1A24), the typography choices are distinct and domain-appropriate, the manifesto contains a sharp "doList" and "dontList" (banned tropes / style anti-patterns), and the mood board contains 4-6 rich tiles with detailed image generation prompts.`;
+    const { fineTuning } = req.body;
+    const prompt = buildAestheticBiblePrompt(req.body);
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
@@ -327,6 +317,25 @@ Produce a full Aesthetic Bible JSON adhering to the required schema. Ensure the 
             philosophyAnchors: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
+            },
+            gamePerspective: { type: Type.STRING, enum: [...GamePerspectiveSchema.options] },
+            mechanicsArchetype: { type: Type.STRING, enum: [...MechanicsArchetypeSchema.options] },
+            renderingStyle: { type: Type.STRING, enum: [...RenderingStyleSchema.options] },
+            artisticInfluences: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            musicDirection: {
+              type: Type.OBJECT,
+              properties: {
+                coreThemeSpec: { type: Type.STRING },
+                instrumentation: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                generativePromptSpec: { type: Type.STRING },
+              },
+              required: ['coreThemeSpec', 'instrumentation', 'generativePromptSpec'],
             },
             manifesto: {
               type: Type.OBJECT,
