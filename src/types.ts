@@ -17,7 +17,10 @@ import {
   MusicDirectionSchema,
   AestheticBibleSchema,
   CohesionAuditResultSchema,
-  DecodedImageAestheticSchema
+  DecodedImageAestheticSchema,
+  RunStatusSchema,
+  RunSchema,
+  ComparisonAuditSchema
 } from './services/schema';
 
 export type GenreCategory = z.infer<typeof GenreCategorySchema>;
@@ -38,6 +41,9 @@ export type MusicDirection = z.infer<typeof MusicDirectionSchema>;
 export type AestheticBible = z.infer<typeof AestheticBibleSchema>;
 export type CohesionAuditResult = z.infer<typeof CohesionAuditResultSchema>;
 export type DecodedImageAesthetic = z.infer<typeof DecodedImageAestheticSchema>;
+export type RunStatus = z.infer<typeof RunStatusSchema>;
+export type Run = z.infer<typeof RunSchema>;
+export type ComparisonAudit = z.infer<typeof ComparisonAuditSchema>;
 
 export interface CohesionAuditRequest {
   bible: AestheticBible;
@@ -60,18 +66,4 @@ export interface GenerationPromptInput {
   musicInstrumentation?: string[];
   ambientMood?: string;
   fineTuning?: FineTuningState;
-}
-
-export type RunStatus = 'success' | 'failed' | 'aborted';
-
-/** A single instrumented provider generation attempt. */
-export interface Run {
-  providerId: string;
-  modelId: string;
-  latencyMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  bible: AestheticBible | null;
-  status: RunStatus;
 }

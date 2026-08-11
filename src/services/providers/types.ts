@@ -1,5 +1,6 @@
 import type {
   AestheticBible,
+  ComparisonAudit,
   CohesionAuditResult,
   DecodedImageAesthetic,
   GenerationPromptInput,
@@ -56,4 +57,9 @@ export interface ProviderAdapter {
     model: string,
     signal?: AbortSignal,
   ): Promise<CohesionAuditResult>;
+  auditComparison?(
+    bibles: readonly AestheticBible[],
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<ComparisonAudit>;
 }

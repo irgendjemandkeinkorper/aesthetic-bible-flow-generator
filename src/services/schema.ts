@@ -161,6 +161,30 @@ export const AestheticBibleSchema = z.object({
   fineTuning: FineTuningStateSchema
 });
 
+export const RunStatusSchema = z.enum(['success', 'failed', 'aborted']);
+
+export const RunSchema = z.object({
+  providerId: z.string(),
+  modelId: z.string(),
+  latencyMs: z.number().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  costUsd: z.number().nonnegative(),
+  bible: AestheticBibleSchema.nullable(),
+  status: RunStatusSchema,
+  // Optional so run records written by M1-M5 remain valid when read from storage.
+  id: z.string().optional(),
+  completedAt: z.string().optional(),
+  pinned: z.boolean().optional(),
+});
+
+export const ComparisonAuditSchema = z.object({
+  summary: z.string(),
+  convergence: z.array(z.string()),
+  divergence: z.array(z.string()),
+  recommendations: z.array(z.string()),
+});
+
 export const CohesionAuditResultSchema = z.object({
   score: z.number().min(0).max(100),
   verdict: z.string(),
@@ -199,7 +223,8 @@ export function getExpandedSchemaFields(depth: number = 3): Record<string, any> 
     schemas: {
       AestheticBible: 'AestheticBibleSchema',
       CohesionAuditResult: 'CohesionAuditResultSchema',
-      DecodedImageAesthetic: 'DecodedImageAestheticSchema'
+      DecodedImageAesthetic: 'DecodedImageAestheticSchema',
+      ComparisonAudit: 'ComparisonAuditSchema'
     }
   };
 }
