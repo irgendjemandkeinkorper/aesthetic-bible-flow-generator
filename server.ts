@@ -85,7 +85,6 @@ export class BoundedRateLimiter {
     }
 
     if (existing) this.clients.delete(clientId);
-    this.evictExpired(now);
     while (this.clients.size >= this.maxClients) {
       const oldestClient = this.clients.keys().next().value as string | undefined;
       if (oldestClient === undefined) break;
@@ -101,11 +100,6 @@ export class BoundedRateLimiter {
     };
   }
 
-  private evictExpired(now: number): void {
-    for (const [clientId, entry] of this.clients) {
-      if (entry.expiresAt <= now) this.clients.delete(clientId);
-    }
-  }
 }
 
 export interface ValidatedImage {
