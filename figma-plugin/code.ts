@@ -1,4 +1,5 @@
 import { FigmaInterchangeSchema, type FigmaInterchangeDocument, type FigmaInterchangeNode } from '../src/services/figmaInterchange';
+import { effectFromSpec, paintFromSpec, transitionFromSpec } from './transforms';
 
 figma.showUI(__html__, { width: 420, height: 320, themeColors: true });
 
@@ -8,58 +9,6 @@ const paintStyleByName = new Map<string, PaintStyle>();
 const effectStyleByName = new Map<string, EffectStyle>();
 const deferredInstances: Array<{ spec: FigmaInterchangeNode; parent: ChildrenMixin }> = [];
 
-function fromHex(hex: string): { color: RGB; opacity: number } {
-  const value = hex.slice(1);
-  const colorValue = value.slice(0, 6);
-  return {
-    color: {
-      r: Number.parseInt(colorValue.slice(0, 2), 16) / 255,
-      g: Number.parseInt(colorValue.slice(2, 4), 16) / 255,
-      b: Number.parseInt(colorValue.slice(4, 6), 16) / 255,
-    },
-    opacity: value.length === 8 ? Number.parseInt(value.slice(6), 16) / 255 : 1,
-  };
-}
-
-function paintFromSpec(spec: any): Paint {
-  if (spec.type === 'solid') {
-    const { color, opacity } = fromHex(spec.color);
-    return { type: 'SOLID', color, opacity: opacity * (spec.opacity ?? 1), visible: spec.visible ?? true };
-  }
-  const radians = ((spec.angle ?? 0) * Math.PI) / 180;
-  const x = Math.cos(radians) / 2;
-  const y = Math.sin(radians) / 2;
-  return {
-    type: 'GRADIENT_LINEAR',
-    gradientTransform: [[x, y, 0.5 - x / 2 - y / 2], [-y, x, 0.5 + y / 2 - x / 2]],
-    gradientStops: spec.stops.map((stop: any) => {
-      const parsed = fromHex(stop.color);
-      return { position: stop.position, color: { ...parsed.color, a: parsed.opacity } };
-    }),
-    opacity: spec.opacity ?? 1,
-    visible: spec.visible ?? true,
-  };
-}
-
-function effectFromSpec(spec: any): Effect {
-  if (spec.type === 'layer-blur' || spec.type === 'background-blur') {
-    return {
-      type: spec.type === 'layer-blur' ? 'LAYER_BLUR' : 'BACKGROUND_BLUR',
-      radius: spec.radius,
-      visible: spec.visible ?? true,
-    } as Effect;
-  }
-  const parsed = fromHex(spec.color);
-  return {
-    type: spec.type === 'drop-shadow' ? 'DROP_SHADOW' : 'INNER_SHADOW',
-    color: { ...parsed.color, a: parsed.opacity },
-    offset: spec.offset,
-    radius: spec.radius,
-    spread: spec.spread ?? 0,
-    visible: spec.visible ?? true,
-    blendMode: 'NORMAL',
-  };
-}
 
 async function createLocalStyles(document: FigmaInterchangeDocument): Promise<void> {
   for (const [name, token] of Object.entries(document.tokens)) {
@@ -205,29 +154,16 @@ async function createDeferredInstances(): Promise<void> {
   }
 }
 
-function transitionFromSpec(spec: any): any {
-  if (!spec || spec.type === 'instant') return null;
-  const type = spec.type.replaceAll('-', '_').toUpperCase();
-  const easingType = spec.easing === 'ease-in-out'
-    ? 'EASE_IN_AND_OUT'
-    : (spec.easing ?? 'ease-out').replaceAll('-', '_').toUpperCase();
-  const transition: any = {
-    type,
-    duration: spec.duration ?? 0.3,
-    easing: { type: easingType },
-  };
-  if (['MOVE_IN', 'MOVE_OUT', 'PUSH', 'SLIDE_IN', 'SLIDE_OUT'].includes(type)) {
-    transition.direction = (spec.direction ?? 'right').toUpperCase();
-    transition.matchLayers = false;
-  }
-  return transition;
-}
-
 async function addPrototypeConnections(document: FigmaInterchangeDocument): Promise<void> {
+  let skipped = 0;
   for (const connection of document.prototypeConnections) {
     const source = nodeBySourceId.get(connection.sourceNodeId);
     const target = nodeBySourceId.get(connection.targetNodeId);
-    if (!source || !target || !('setReactionsAsync' in source)) continue;
+    if (!source || !target || !('setReactionsAsync' in source)) {
+      skipped += 1;
+      console.warn(`Skipped prototype connection from ${connection.sourceNodeId} to ${connection.targetNodeId}: endpoint node was not created.`);
+      continue;
+    }
     const action = connection.navigation === 'back'
       ? { type: 'BACK' }
       : {
@@ -239,6 +175,7 @@ async function addPrototypeConnections(document: FigmaInterchangeDocument): Prom
     const triggerTypes = { click: 'ON_CLICK', hover: 'ON_HOVER', press: 'ON_PRESS', drag: 'ON_DRAG' } as const;
     await (source as any).setReactionsAsync([{ trigger: { type: triggerTypes[connection.trigger] }, action }]);
   }
+  if (skipped > 0) figma.notify(`${skipped} prototype connection${skipped === 1 ? '' : 's'} skipped during import.`, { error: true });
 }
 
 async function importDocument(input: unknown, createdPages: PageNode[]): Promise<void> {
